@@ -14,6 +14,8 @@ export default function ImportantNotice() {
         <p className="text-sm text-yellow-700 mt-1">{t('notice_processing_text')}</p>
       </div>
       <button
+        type="button"
+        aria-label="Dismiss notice"
         onClick={() => setOpen(false)}
         className="text-yellow-600 hover:text-yellow-800 text-lg leading-none"
       >

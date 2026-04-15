@@ -118,18 +118,28 @@ npm run dev
 ## Development Commands
 
 ```bash
+# Full repository helpers
+make install          # Install backend + frontend dependencies
+make lint             # Run frontend + backend lint checks
+make format-check     # Run formatting validation everywhere
+make test             # Run frontend + backend test suites
+make check            # Full quality gate
+
 # Backend
 cd backend
 poetry run uvicorn main:app --reload         # Dev server
 poetry run pytest                            # Tests
 poetry run ruff check .                      # Lint
-poetry run mypy .                            # Type check
+poetry run ruff format --check .             # Format check
 
 # Frontend
 cd frontend
-npm run dev      # Dev server (http://localhost:5173)
-npm run build    # Production build
-npm run preview  # Preview production build
+npm run dev          # Dev server (http://localhost:5173)
+npm run build        # Production build
+npm run lint         # Lint
+npm run format:check # Format check
+npm run test         # Test suite
+npm run preview      # Preview production build
 ```
 
 ## Auth Flow
