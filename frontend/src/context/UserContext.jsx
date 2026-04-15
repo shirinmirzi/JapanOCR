@@ -1,16 +1,17 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useIsAuthenticated } from '@azure/msal-react';
-import { checkAuth } from '../services/api';
+import { checkAuth, isDevLogin } from '../services/api';
 
 const UserContext = createContext(null);
 
 export function UserProvider({ children }) {
   const isAuthenticated = useIsAuthenticated();
+  const devAuthenticated = isDevLogin();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated || devAuthenticated) {
       checkAuth()
         .then((data) => setUser(data))
         .catch(() => setUser(null))
@@ -19,7 +20,7 @@ export function UserProvider({ children }) {
       setUser(null);
       setLoading(false);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, devAuthenticated]);
 
   return (
     <UserContext.Provider value={{ user, setUser, loading }}>

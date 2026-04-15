@@ -2,8 +2,25 @@ import axios from 'axios';
 import { msalInstance, loginRequest } from '../msalConfig';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const DEV_LOGIN_KEY = 'invoice_processor_dev_login';
+
+export function isDevLogin() {
+  return localStorage.getItem(DEV_LOGIN_KEY) === 'true';
+}
+
+export function enableDevLogin() {
+  localStorage.setItem(DEV_LOGIN_KEY, 'true');
+}
+
+export function clearDevLogin() {
+  localStorage.removeItem(DEV_LOGIN_KEY);
+}
 
 async function getAuthHeader() {
+  if (isDevLogin()) {
+    return { Authorization: 'Bearer dev-token' };
+  }
+
   const accounts = msalInstance.getAllAccounts();
   if (accounts.length === 0) return {};
   try {
@@ -42,6 +59,12 @@ export async function checkAuth() {
 }
 
 export async function logout() {
+  if (isDevLogin()) {
+    clearDevLogin();
+    window.location.assign('/login');
+    return;
+  }
+
   msalInstance.logoutRedirect({ postLogoutRedirectUri: '/login' });
 }
 

@@ -1,11 +1,11 @@
 const translations = {
   en: {
-    app_title: 'Invoice Processor',
+    app_title: 'Japan OCR Tool',
     nav_upload: 'Upload',
     nav_jobs: 'Jobs',
     nav_logs: 'Logs',
     nav_dashboard: 'Dashboard',
-    login_title: 'Invoice Processor',
+    login_title: 'Japan OCR Tool',
     login_btn: 'Sign in with Microsoft',
     upload_title: 'Upload Invoice',
     upload_hint: 'Drag and drop a PDF invoice here, or click to select',
@@ -46,12 +46,12 @@ const translations = {
     logs_title: 'Activity Logs',
   },
   fr: {
-    app_title: 'Processeur de Factures',
+    app_title: 'Japan OCR Tool',
     nav_upload: 'Télécharger',
     nav_jobs: 'Traitements',
     nav_logs: 'Journaux',
     nav_dashboard: 'Tableau de bord',
-    login_title: 'Processeur de Factures',
+    login_title: 'Japan OCR Tool',
     login_btn: 'Se connecter avec Microsoft',
     upload_title: 'Télécharger une Facture',
     upload_hint: 'Faites glisser une facture PDF ici, ou cliquez pour sélectionner',

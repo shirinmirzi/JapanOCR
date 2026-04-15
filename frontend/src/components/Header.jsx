@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useMsal } from '@azure/msal-react';
 import { useUser } from '../context/UserContext';
+import { clearDevLogin, isDevLogin } from '../services/api';
 import { t, setLang, getLang, availableLangs } from '../i18n';
 
 const HEADER_BG = '#002F45';
@@ -21,6 +22,12 @@ export default function Header() {
   };
 
   const handleSignOut = () => {
+    if (isDevLogin()) {
+      clearDevLogin();
+      navigate('/login', { replace: true });
+      return;
+    }
+
     instance.logoutRedirect({ postLogoutRedirectUri: '/login' });
   };
 
