@@ -5,7 +5,7 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-DOCWISE_URL = "https://docwiseapi-dev.getinge.com/v1/docwise/analyze"
+DOCWISE_URL = os.environ.get("DOCWISE_URL", "https://docwiseapi-dev.getinge.com/v1/docwise/analyze")
 DOCWISE_INVOICE_PROMPT = (
     "Extract all invoice data from this document. "
     "Return the following fields in pipe-separated format: "

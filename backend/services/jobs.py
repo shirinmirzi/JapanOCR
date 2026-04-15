@@ -68,7 +68,6 @@ def get_jobs_paged(
     sort_dir: str = "desc",
     status: str = None,
     user_id: str = None,
-    include_tests: bool = False,
 ) -> dict:
     allowed_sort = {"created_at", "status", "total_count", "processed_count"}
     if sort_by not in allowed_sort:

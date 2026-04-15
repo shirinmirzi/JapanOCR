@@ -15,7 +15,6 @@ async def jobs_paged(
     sort_dir: str = Query("desc"),
     status: str = Query(None),
     user_id: str = Query(None),
-    include_tests: bool = Query(False),
     user: dict = Depends(get_current_user),
 ):
     return get_jobs_paged(
@@ -25,7 +24,6 @@ async def jobs_paged(
         sort_dir=sort_dir,
         status=status,
         user_id=user_id,
-        include_tests=include_tests,
     )
 
 

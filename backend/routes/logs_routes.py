@@ -18,7 +18,6 @@ async def logs_paged(
     until: str = Query(None),
     sort_by: str = Query("timestamp"),
     sort_dir: str = Query("desc"),
-    include_tests: bool = Query(False),
     user_id: str = Query(None),
     user: dict = Depends(get_current_user),
 ):
@@ -32,7 +31,6 @@ async def logs_paged(
         until=until,
         sort_by=sort_by,
         sort_dir=sort_dir,
-        include_tests=include_tests,
         user_id=user_id,
     )
 

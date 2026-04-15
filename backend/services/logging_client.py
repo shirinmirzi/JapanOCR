@@ -39,7 +39,6 @@ def get_logs_paged(
     until: str = None,
     sort_by: str = "timestamp",
     sort_dir: str = "desc",
-    include_tests: bool = False,
     user_id: str = None,
 ) -> dict:
     allowed_sort = {"timestamp", "filename", "status"}

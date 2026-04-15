@@ -30,17 +30,30 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(false);
   const [range, setRange] = useState('all');
 
+  const getRangeSince = (r) => {
+    if (r === 'all') return undefined;
+    const now = new Date();
+    const hours = r === '1h' ? 1 : r === '24h' ? 24 : 24 * 7;
+    return new Date(now.getTime() - hours * 60 * 60 * 1000).toISOString();
+  };
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await getDashboardSummary({ jobs_limit: 5, invoices_limit: 5, failures_limit: 5 });
+      const since = getRangeSince(range);
+      const data = await getDashboardSummary({
+        jobs_limit: 5,
+        invoices_limit: 5,
+        failures_limit: 5,
+        ...(since ? { since } : {}),
+      });
       setSummary(data);
     } catch (e) {
       console.error(e);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [range]);
 
   useEffect(() => {
     load();

@@ -35,12 +35,14 @@ export default function JobsPage() {
 
   useEffect(() => {
     load();
-    const hasActive = data.items.some((j) => ['queued', 'processing'].includes(j.status));
-    if (hasActive) {
-      const id = setInterval(load, 15000);
-      return () => clearInterval(id);
-    }
   }, [load]);
+
+  useEffect(() => {
+    const hasActive = data.items.some((j) => ['queued', 'processing'].includes(j.status));
+    if (!hasActive) return;
+    const id = setInterval(load, 15000);
+    return () => clearInterval(id);
+  }, [data.items, load]);
 
   const toggleExpand = (id) => setExpanded(expanded === id ? null : id);
 
