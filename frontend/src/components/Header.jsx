@@ -10,7 +10,7 @@ const ACTIVE_COLOR = '#00A9CE';
 
 export default function Header() {
   const { instance } = useMsal();
-  const { user } = useUser();
+  const { user = null } = useUser() || {};
   const navigate = useNavigate();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [lang, setLangState] = useState(getLang());

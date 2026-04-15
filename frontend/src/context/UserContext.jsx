@@ -2,7 +2,13 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useIsAuthenticated } from '@azure/msal-react';
 import { checkAuth, isDevLogin } from '../services/api';
 
-const UserContext = createContext(null);
+const defaultUserContext = {
+  user: null,
+  setUser: () => {},
+  loading: true,
+};
+
+const UserContext = createContext(defaultUserContext);
 
 export function UserProvider({ children }) {
   const isAuthenticated = useIsAuthenticated();
@@ -29,4 +35,4 @@ export function UserProvider({ children }) {
   );
 }
 
-export const useUser = () => useContext(UserContext);
+export const useUser = () => useContext(UserContext) || defaultUserContext;
