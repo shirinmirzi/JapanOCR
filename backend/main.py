@@ -70,5 +70,5 @@ async def health():
         db_error = str(e)
     return {
         "status": "ok" if db_ok else "degraded",
-        "database": "connected" if db_ok else f"error: {db_error}",
+        "database": "connected" if db_ok else "error: database unavailable",
     }

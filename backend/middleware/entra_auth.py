@@ -40,8 +40,7 @@ def extract_user_from_claims(claims: dict) -> dict:
         or claims.get("email")
         or claims.get("sub", "unknown")
     )
-    name = claims.get("name") or claims.get("given_name", "") + " " + claims.get("family_name", "")
-    name = name.strip() or username
+    name = claims.get("name") or (claims.get("given_name", "") + " " + claims.get("family_name", "")).strip() or username
     return {
         "username": username,
         "name": name,
@@ -95,7 +94,7 @@ async def entra_auth_middleware(request: Request, call_next):
     try:
         claims = verify_entra_token(token)
         request.state.user = extract_user_from_claims(claims)
-    except ValueError as e:
-        return JSONResponse(status_code=401, content={"detail": str(e)})
+    except ValueError:
+        return JSONResponse(status_code=401, content={"detail": "Invalid or expired token"})
 
     return await call_next(request)

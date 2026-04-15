@@ -81,7 +81,7 @@ def get_logs_paged(
 
     offset = (page - 1) * page_size
     data_sql = f"SELECT * FROM logs {where} ORDER BY {sort_by} {sort_dir} LIMIT %s OFFSET %s"
-    rows = execute_query(data_sql, (params + [page_size, offset]) or [page_size, offset])
+    rows = execute_query(data_sql, (params or []) + [page_size, offset])
     items = [dict(r) for r in rows]
 
     return {

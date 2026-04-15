@@ -67,7 +67,6 @@ async def _process_single_file(file: UploadFile, user_id: str, job_id: str = Non
 
 
 def _background_bulk_process(job_id: str, files_data: list, user_id: str):
-    import io
     set_job_status(job_id, "processing")
     results = {}
     for item in files_data:

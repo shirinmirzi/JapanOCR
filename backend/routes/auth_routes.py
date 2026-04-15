@@ -9,10 +9,10 @@ router = APIRouter()
 def compute_initials(name: str) -> str:
     if not name:
         return "?"
-    parts = name.strip().split()
+    parts = [p for p in name.strip().split() if p]
     if len(parts) >= 2:
         return (parts[0][0] + parts[-1][0]).upper()
-    return name[0].upper()
+    return parts[0][0].upper() if parts else "?"
 
 
 @router.get("/auth/me")
