@@ -1,5 +1,7 @@
 import logging
+
 from fastapi import APIRouter, Depends, Query
+
 from middleware.entra_auth import get_current_user
 from services.logging_client import get_logs_paged, get_timeout_diagnostics
 

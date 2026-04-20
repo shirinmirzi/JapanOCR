@@ -1,9 +1,18 @@
-import os
 import logging
+import os
 from contextlib import asynccontextmanager
+
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
+
+from config.database import close_connection_pool, execute_query, init_database
+from middleware.entra_auth import entra_auth_middleware
+from routes.auth_routes import router as auth_router
+from routes.dashboard_routes import router as dashboard_router
+from routes.invoice_routes import router as invoice_router
+from routes.jobs_routes import router as jobs_router
+from routes.logs_routes import router as logs_router
 
 load_dotenv()
 
@@ -12,14 +21,6 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
-
-from middleware.entra_auth import entra_auth_middleware
-from routes.auth_routes import router as auth_router
-from routes.invoice_routes import router as invoice_router
-from routes.jobs_routes import router as jobs_router
-from routes.logs_routes import router as logs_router
-from routes.dashboard_routes import router as dashboard_router
-from config.database import init_database, close_connection_pool, execute_query
 
 
 @asynccontextmanager
@@ -62,12 +63,11 @@ app.include_router(dashboard_router)
 @app.get("/health")
 async def health():
     db_ok = False
-    db_error = None
     try:
         rows = execute_query("SELECT 1 AS ok")
         db_ok = bool(rows)
     except Exception as e:
-        db_error = str(e)
+        logger.warning("Health check database query failed: %s", e)
     return {
         "status": "ok" if db_ok else "degraded",
         "database": "connected" if db_ok else "error: database unavailable",

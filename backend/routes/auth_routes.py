@@ -1,6 +1,8 @@
 import logging
-from fastapi import APIRouter, Depends, HTTPException
-from middleware.entra_auth import get_current_user, verify_entra_token, extract_user_from_claims
+
+from fastapi import APIRouter, Depends
+
+from middleware.entra_auth import extract_user_from_claims, get_current_user, verify_entra_token
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

@@ -1,5 +1,7 @@
 import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query
+
 from middleware.entra_auth import get_current_user
 from services.jobs import get_job, get_jobs_paged
 

@@ -1,6 +1,7 @@
-import os
 import logging
+import os
 from contextlib import contextmanager
+
 from psycopg2 import pool
 from psycopg2.extras import RealDictCursor
 
@@ -130,27 +131,51 @@ def init_database():
             """)
 
             # Indexes for jobs
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_jobs_created_at ON jobs (created_at DESC)")
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_jobs_created_at "
+                "ON jobs (created_at DESC)"
+            )
             cur.execute("CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs (status)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_jobs_user_id ON jobs (user_id)")
 
             # Indexes for logs
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs (timestamp DESC)")
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_logs_timestamp "
+                "ON logs (timestamp DESC)"
+            )
             cur.execute("CREATE INDEX IF NOT EXISTS idx_logs_status ON logs (status)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_logs_filename ON logs (filename)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_logs_user_id ON logs (user_id)")
 
             # Indexes for invoices
             cur.execute("CREATE INDEX IF NOT EXISTS idx_invoices_job_id ON invoices (job_id)")
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_invoices_vendor_name ON invoices (vendor_name)")
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_invoices_invoice_number ON invoices (invoice_number)")
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_invoices_vendor_name "
+                "ON invoices (vendor_name)"
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_invoices_invoice_number "
+                "ON invoices (invoice_number)"
+            )
             cur.execute("CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices (status)")
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_invoices_created_at ON invoices (created_at)")
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_invoices_created_at "
+                "ON invoices (created_at)"
+            )
             cur.execute("CREATE INDEX IF NOT EXISTS idx_invoices_user_id ON invoices (user_id)")
 
             # GIN indexes on JSONB columns
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_jobs_filenames_gin ON jobs USING GIN (filenames)")
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_logs_metadata_gin ON logs USING GIN (metadata)")
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_invoices_line_items_gin ON invoices USING GIN (line_items)")
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_jobs_filenames_gin "
+                "ON jobs USING GIN (filenames)"
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_logs_metadata_gin "
+                "ON logs USING GIN (metadata)"
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_invoices_line_items_gin "
+                "ON invoices USING GIN (line_items)"
+            )
 
         logger.info("Database initialized successfully")

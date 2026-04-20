@@ -1,11 +1,15 @@
+import logging
 import os
 import time
-import logging
+
 import requests
 
 logger = logging.getLogger(__name__)
 
-DOCWISE_URL = os.environ.get("DOCWISE_URL", "https://docwiseapi-dev.getinge.com/v1/docwise/analyze")
+DOCWISE_URL = os.environ.get(
+    "DOCWISE_URL",
+    "https://docwiseapi-dev.getinge.com/v1/docwise/analyze",
+)
 DOCWISE_INVOICE_PROMPT = (
     "Extract all invoice data from this document. "
     "Return the following fields in pipe-separated format: "
@@ -66,15 +70,28 @@ def analyze_document(file_obj, filename: str, query: str = None) -> dict:
             return response.json()
         except requests.exceptions.Timeout as e:
             last_error = e
-            logger.warning("DocWise timeout on attempt %d/%d for %s", attempt, MAX_ATTEMPTS, filename)
+            logger.warning(
+                "DocWise timeout on attempt %d/%d for %s",
+                attempt,
+                MAX_ATTEMPTS,
+                filename,
+            )
         except requests.exceptions.RequestException as e:
             last_error = e
-            logger.warning("DocWise error on attempt %d/%d for %s: %s", attempt, MAX_ATTEMPTS, filename, e)
+            logger.warning(
+                "DocWise error on attempt %d/%d for %s: %s",
+                attempt,
+                MAX_ATTEMPTS,
+                filename,
+                e,
+            )
 
         if attempt < MAX_ATTEMPTS:
             time.sleep(BACKOFF_BASE_SEC ** attempt)
 
-    raise RuntimeError(f"DocWise analysis failed after {MAX_ATTEMPTS} attempts: {last_error}") from last_error
+    raise RuntimeError(
+        f"DocWise analysis failed after {MAX_ATTEMPTS} attempts: {last_error}"
+    ) from last_error
 
 
 def extract_invoice_data(docwise_response: dict) -> dict:
@@ -98,9 +115,17 @@ def extract_invoice_data(docwise_response: dict) -> dict:
 
     # Parse header fields — expect first line to be pipe-separated header values
     field_keys = [
-        "invoice_number", "vendor_name", "vendor_address", "customer_name",
-        "customer_address", "invoice_date", "due_date", "total_amount",
-        "tax_amount", "subtotal", "currency"
+        "invoice_number",
+        "vendor_name",
+        "vendor_address",
+        "customer_name",
+        "customer_address",
+        "invoice_date",
+        "due_date",
+        "total_amount",
+        "tax_amount",
+        "subtotal",
+        "currency",
     ]
 
     header_line = ""

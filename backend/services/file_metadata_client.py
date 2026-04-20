@@ -1,5 +1,6 @@
 import json
 import logging
+
 from config.database import execute_query, execute_write
 
 logger = logging.getLogger(__name__)
@@ -17,7 +18,14 @@ def get_invoices_paged(
     sort_by: str = "created_at",
     sort_dir: str = "desc",
 ) -> dict:
-    allowed_sort = {"created_at", "vendor_name", "invoice_number", "status", "invoice_date", "total_amount"}
+    allowed_sort = {
+        "created_at",
+        "vendor_name",
+        "invoice_number",
+        "status",
+        "invoice_date",
+        "total_amount",
+    }
     if sort_by not in allowed_sort:
         sort_by = "created_at"
     sort_dir = "DESC" if sort_dir.lower() == "desc" else "ASC"
@@ -55,7 +63,10 @@ def get_invoices_paged(
     total = count_row[0]["total"] if count_row else 0
 
     offset = (page - 1) * page_size
-    data_sql = f"SELECT * FROM invoices {where} ORDER BY {sort_by} {sort_dir} LIMIT %s OFFSET %s"
+    data_sql = (
+        f"SELECT * FROM invoices {where} ORDER BY {sort_by} "
+        f"{sort_dir} LIMIT %s OFFSET %s"
+    )
     rows = execute_query(data_sql, (params or []) + [page_size, offset])
     items = [dict(r) for r in rows]
 
@@ -146,7 +157,8 @@ def soft_delete_invoice(invoice_id: int):
 
 def get_dashboard_stats() -> dict:
     status_rows = execute_query(
-        "SELECT status, COUNT(*) as count FROM invoices WHERE status != 'deleted' GROUP BY status"
+        "SELECT status, COUNT(*) as count FROM invoices "
+        "WHERE status != 'deleted' GROUP BY status"
     )
     by_status = {r["status"]: r["count"] for r in status_rows} if status_rows else {}
 
@@ -160,6 +172,10 @@ def get_dashboard_stats() -> dict:
         LIMIT 10
         """
     )
-    vendors = [{"vendor_name": r["vendor_name"], "count": r["count"]} for r in vendor_rows] if vendor_rows else []
+    vendors = (
+        [{"vendor_name": r["vendor_name"], "count": r["count"]} for r in vendor_rows]
+        if vendor_rows
+        else []
+    )
 
     return {"by_status": by_status, "vendors": vendors}

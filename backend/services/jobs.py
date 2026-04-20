@@ -1,8 +1,8 @@
 import json
-import uuid
 import logging
-from datetime import datetime, timezone
-from config.database import execute_query, execute_write, get_db_connection
+import uuid
+
+from config.database import execute_query, execute_write
 
 logger = logging.getLogger(__name__)
 

@@ -1,5 +1,6 @@
 import json
 import logging
+
 from config.database import execute_query, execute_write
 
 logger = logging.getLogger(__name__)
@@ -19,7 +20,14 @@ def log_invoice_result(
             INSERT INTO logs (filename, status, message, error, metadata, user_id)
             VALUES (%s, %s, %s, %s, %s::jsonb, %s)
             """,
-            (filename, status, message, error, json.dumps(metadata) if metadata else None, user_id),
+            (
+                filename,
+                status,
+                message,
+                error,
+                json.dumps(metadata) if metadata else None,
+                user_id,
+            ),
         )
     except Exception as e:
         logger.warning("Failed to write log entry: %s", e)
@@ -120,4 +128,10 @@ def get_timeout_diagnostics() -> dict:
     )
     if rows:
         return dict(rows[0])
-    return {"timeout_count": 0, "error_count": 0, "success_count": 0, "total": 0, "last_entry": None}
+    return {
+        "timeout_count": 0,
+        "error_count": 0,
+        "success_count": 0,
+        "total": 0,
+        "last_entry": None,
+    }

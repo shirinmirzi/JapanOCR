@@ -1,19 +1,23 @@
-import os
-import logging
-import tempfile
 import contextlib
+import logging
+import os
+import tempfile
 from datetime import datetime, timezone
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, BackgroundTasks, Query
-from fastapi.responses import JSONResponse
+
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile
+
 from middleware.entra_auth import get_current_user
-from services.docwise_client import analyze_document, extract_invoice_data
 from services.azure_storage_client import azure_storage_client
-from services.jobs import create_job, set_job_status, increment_processed, set_job_results, get_job
-from services.logging_client import log_invoice_result
+from services.docwise_client import analyze_document, extract_invoice_data
 from services.file_metadata_client import (
-    create_invoice, get_invoices_paged, get_invoice_by_id,
-    get_invoices_by_job, soft_delete_invoice,
+    create_invoice,
+    get_invoice_by_id,
+    get_invoices_by_job,
+    get_invoices_paged,
+    soft_delete_invoice,
 )
+from services.jobs import create_job, increment_processed, set_job_results, set_job_status
+from services.logging_client import log_invoice_result
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/invoices")
@@ -48,7 +52,10 @@ async def _process_single_file(file: UploadFile, user_id: str, job_id: str = Non
     except Exception as e:
         logger.error("OCR failed for %s: %s", filename, e)
         log_invoice_result(filename, "error", error=str(e), user_id=user_id)
-        raise HTTPException(status_code=500, detail=f"OCR processing failed: {e}") from e
+        raise HTTPException(
+            status_code=500,
+            detail=f"OCR processing failed: {e}",
+        ) from e
     finally:
         with contextlib.suppress(Exception):
             os.unlink(tmp_path)
@@ -62,8 +69,18 @@ async def _process_single_file(file: UploadFile, user_id: str, job_id: str = Non
         upload_folder=upload_folder,
         user_id=user_id,
     )
-    log_invoice_result(filename, "success", message="Invoice processed", user_id=user_id)
-    return {**invoice_data, "id": record.get("id"), "blob_url": blob_url, "filename": filename}
+    log_invoice_result(
+        filename,
+        "success",
+        message="Invoice processed",
+        user_id=user_id,
+    )
+    return {
+        **invoice_data,
+        "id": record.get("id"),
+        "blob_url": blob_url,
+        "filename": filename,
+    }
 
 
 def _background_bulk_process(job_id: str, files_data: list, user_id: str):
@@ -98,7 +115,12 @@ def _background_bulk_process(job_id: str, files_data: list, user_id: str):
                 user_id=user_id,
             )
             results[filename] = {"status": "done", **invoice_data}
-            log_invoice_result(filename, "success", message="Bulk invoice processed", user_id=user_id)
+            log_invoice_result(
+                filename,
+                "success",
+                message="Bulk invoice processed",
+                user_id=user_id,
+            )
         except Exception as e:
             logger.error("Bulk OCR failed for %s: %s", filename, e)
             results[filename] = {"status": "failed", "error": str(e)}
@@ -110,7 +132,9 @@ def _background_bulk_process(job_id: str, files_data: list, user_id: str):
         increment_processed(job_id)
 
     failed = sum(1 for r in results.values() if r.get("status") == "failed")
-    final_status = "failed" if failed == len(files_data) else ("partial" if failed else "done")
+    final_status = (
+        "failed" if failed == len(files_data) else "partial" if failed else "done"
+    )
     set_job_status(job_id, final_status)
     set_job_results(job_id, results)
 
@@ -143,7 +167,12 @@ async def bulk_upload_invoices(
         content = await f.read()
         files_data.append({"filename": f.filename, "content": content})
 
-    background_tasks.add_task(_background_bulk_process, job_id, files_data, user["username"])
+    background_tasks.add_task(
+        _background_bulk_process,
+        job_id,
+        files_data,
+        user["username"],
+    )
 
     return {"job_id": job_id, "accepted": len(files), "filenames": filenames}
 

@@ -1,10 +1,11 @@
 import logging
+
 from fastapi import APIRouter, Depends, Query
+
+from config.database import execute_query
 from middleware.entra_auth import get_current_user
 from services.file_metadata_client import get_dashboard_stats
-from services.jobs import list_jobs, get_jobs_paged
-from services.logging_client import get_logs_db
-from config.database import execute_query
+from services.jobs import list_jobs
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/dashboard")
@@ -24,21 +25,30 @@ async def get_dashboard_summary(
 
     if since:
         invoices_total_row = execute_query(
-            "SELECT COUNT(*) as total FROM invoices WHERE status != 'deleted' AND created_at >= %s",
+            "SELECT COUNT(*) as total FROM invoices "
+            "WHERE status != 'deleted' AND created_at >= %s",
             (since,),
         )
     else:
-        invoices_total_row = execute_query("SELECT COUNT(*) as total FROM invoices WHERE status != 'deleted'")
+        invoices_total_row = execute_query(
+            "SELECT COUNT(*) as total FROM invoices WHERE status != 'deleted'"
+        )
     invoices_total = invoices_total_row[0]["total"] if invoices_total_row else 0
 
     if since:
-        jobs_total_row = execute_query("SELECT COUNT(*) as total FROM jobs WHERE created_at >= %s", (since,))
+        jobs_total_row = execute_query(
+            "SELECT COUNT(*) as total FROM jobs WHERE created_at >= %s",
+            (since,),
+        )
     else:
         jobs_total_row = execute_query("SELECT COUNT(*) as total FROM jobs")
     jobs_total = jobs_total_row[0]["total"] if jobs_total_row else 0
 
     if since:
-        logs_total_row = execute_query("SELECT COUNT(*) as total FROM logs WHERE timestamp >= %s", (since,))
+        logs_total_row = execute_query(
+            "SELECT COUNT(*) as total FROM logs WHERE timestamp >= %s",
+            (since,),
+        )
     else:
         logs_total_row = execute_query("SELECT COUNT(*) as total FROM logs")
     logs_total = logs_total_row[0]["total"] if logs_total_row else 0
@@ -47,24 +57,28 @@ async def get_dashboard_summary(
 
     if since:
         recent_invoices_rows = execute_query(
-            "SELECT * FROM invoices WHERE status != 'deleted' AND created_at >= %s ORDER BY created_at DESC LIMIT %s",
+            "SELECT * FROM invoices WHERE status != 'deleted' "
+            "AND created_at >= %s ORDER BY created_at DESC LIMIT %s",
             (since, invoices_limit),
         )
     else:
         recent_invoices_rows = execute_query(
-            "SELECT * FROM invoices WHERE status != 'deleted' ORDER BY created_at DESC LIMIT %s",
+            "SELECT * FROM invoices WHERE status != 'deleted' "
+            "ORDER BY created_at DESC LIMIT %s",
             (invoices_limit,),
         )
     recent_invoices = [dict(r) for r in recent_invoices_rows] if recent_invoices_rows else []
 
     if since:
         failures_rows = execute_query(
-            "SELECT * FROM logs WHERE status IN ('error', 'failed') AND timestamp >= %s ORDER BY timestamp DESC LIMIT %s",
+            "SELECT * FROM logs WHERE status IN ('error', 'failed') "
+            "AND timestamp >= %s ORDER BY timestamp DESC LIMIT %s",
             (since, failures_limit),
         )
     else:
         failures_rows = execute_query(
-            "SELECT * FROM logs WHERE status IN ('error', 'failed') ORDER BY timestamp DESC LIMIT %s",
+            "SELECT * FROM logs WHERE status IN ('error', 'failed') "
+            "ORDER BY timestamp DESC LIMIT %s",
             (failures_limit,),
         )
     failures = [dict(r) for r in failures_rows] if failures_rows else []
