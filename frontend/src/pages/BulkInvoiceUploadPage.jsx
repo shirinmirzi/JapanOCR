@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { bulkUploadInvoices, getBulkJob } from '../services/api';
 import { t } from '../i18n';
@@ -45,27 +45,30 @@ export default function BulkInvoiceUploadPage() {
   const [error, setError] = useState(null);
   const pollRef = useRef(null);
 
-  const stopPolling = () => {
+  const stopPolling = useCallback(() => {
     if (pollRef.current) {
       clearInterval(pollRef.current);
       pollRef.current = null;
     }
-  };
+  }, []);
 
-  const pollJob = async (id) => {
-    try {
-      const data = await getBulkJob(id);
-      setJob(data);
-      setRows(buildRowsFromJob(data));
-      if (TERMINAL_STATUSES.has(data.status)) {
+  const pollJob = useCallback(
+    async (id) => {
+      try {
+        const data = await getBulkJob(id);
+        setJob(data);
+        setRows(buildRowsFromJob(data));
+        if (TERMINAL_STATUSES.has(data.status)) {
+          stopPolling();
+          setRunning(false);
+        }
+      } catch {
         stopPolling();
         setRunning(false);
       }
-    } catch {
-      stopPolling();
-      setRunning(false);
-    }
-  };
+    },
+    [stopPolling]
+  );
 
   useEffect(() => {
     if (jobId) {
@@ -73,7 +76,7 @@ export default function BulkInvoiceUploadPage() {
       pollRef.current = setInterval(() => pollJob(jobId), POLL_INTERVAL);
     }
     return () => stopPolling();
-  }, [jobId]);
+  }, [jobId, pollJob, stopPolling]);
 
   const handleFiles = (e) => {
     const selected = Array.from(e.target.files).filter((f) =>
