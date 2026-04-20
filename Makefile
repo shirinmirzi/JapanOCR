@@ -2,6 +2,7 @@ SHELL := /bin/bash
 export PATH := $(HOME)/.local/bin:$(PATH)
 
 .PHONY: help install install-backend install-frontend \
+	run-backend run-frontend \
 	lint lint-backend lint-frontend \
 	format format-backend format-frontend \
 	format-check format-check-backend format-check-frontend \
@@ -10,6 +11,8 @@ export PATH := $(HOME)/.local/bin:$(PATH)
 help:
 	@echo "Available targets:"
 	@echo "  make install        - install backend and frontend dependencies"
+	@echo "  make run-backend    - start the FastAPI dev server"
+	@echo "  make run-frontend   - start the Vite dev server"
 	@echo "  make lint           - run all lint checks"
 	@echo "  make format         - auto-format backend and frontend"
 	@echo "  make format-check   - verify formatting without changing files"
@@ -23,6 +26,12 @@ install-backend:
 
 install-frontend:
 	cd frontend && npm install
+
+run-backend:
+	cd backend && poetry run uvicorn main:app --reload --host 0.0.0.0 --port 8000
+
+run-frontend:
+	cd frontend && npm run dev -- --host 0.0.0.0
 
 lint: lint-backend lint-frontend
 
