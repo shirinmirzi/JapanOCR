@@ -105,10 +105,10 @@ function SingleUpload() {
   return (
     <div>
       {!result ? (
-        <div className="bg-white rounded-xl shadow p-6 max-w-2xl">
+        <div className="bg-white rounded-xl shadow p-6 w-full">
           <InvoiceTypeToggle value={invoiceType} onChange={setInvoiceType} />
           <div
-            className={`border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition-colors ${
+            className={`border-2 border-dashed rounded-xl p-6 sm:p-10 text-center cursor-pointer transition-colors ${
               dragging ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-blue-400'
             }`}
             onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
@@ -154,7 +154,7 @@ function SingleUpload() {
           </div>
         </div>
       ) : (
-        <div className="max-w-2xl">
+        <div className="w-full">
           <div className="bg-white rounded-xl shadow p-6 mb-4">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-gray-900">Invoice Data Extracted</h2>
@@ -329,7 +329,7 @@ function BulkUpload() {
   return (
     <div>
       {!jobId ? (
-        <div className="bg-white rounded-xl shadow p-6 max-w-2xl">
+        <div className="bg-white rounded-xl shadow p-6 w-full">
           <p className="text-gray-600 mb-4">{t('bulk_hint')}</p>
           <InvoiceTypeToggle value={invoiceType} onChange={setInvoiceType} />
           <div className="flex gap-3 items-center">

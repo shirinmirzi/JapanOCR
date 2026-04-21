@@ -40,7 +40,7 @@ export default function Header() {
 
   return (
     <header style={{ backgroundColor: HEADER_BG }} className="text-white shadow-md">
-      <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div className="w-full px-4 sm:px-6 md:px-8 lg:px-12 xl:px-16 2xl:px-24 py-3 flex items-center justify-between">
         <div className="flex items-center gap-8">
           <span className="text-xl font-bold tracking-wide">{t('app_title')}</span>
           <nav className="hidden md:flex gap-6">
