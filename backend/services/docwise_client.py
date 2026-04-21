@@ -10,14 +10,39 @@ DOCWISE_URL = os.environ.get(
     "DOCWISE_URL",
     "https://docwiseapi-dev.getinge.com/v1/docwise/analyze",
 )
-DOCWISE_INVOICE_PROMPT = (
-    "Extract all invoice data from this document. "
-    "Return the following fields in pipe-separated format: "
-    "INVOICE NUMBER | VENDOR NAME | VENDOR ADDRESS | CUSTOMER NAME | CUSTOMER ADDRESS | "
-    "INVOICE DATE | DUE DATE | TOTAL AMOUNT | TAX AMOUNT | SUBTOTAL | CURRENCY. "
-    "Then list each line item as: DESCRIPTION | QUANTITY | UNIT PRICE | TOTAL. "
-    "Preserve all numbers exactly as printed. "
-    "If a field is not found, use N/A."
+DOCWISE_DAILY_PROMPT = (
+    "This is a Japanese Delivery Note and Invoice (納品書兼請求書). "
+    "Extract the following fields and return them pipe-separated on ONE line: "
+    "CUSTOMER CODE | INVOICE NUMBER | ORDER NUMBER | INVOICE DATE | VENDOR NAME | VENDOR ADDRESS | CUSTOMER NAME | CUSTOMER ADDRESS | SUBTOTAL | TAX AMOUNT | TOTAL AMOUNT | CURRENCY. "
+    "Field definitions: "
+    "CUSTOMER CODE = 顧客番号 value. "
+    "INVOICE NUMBER = 納品書番号 value (NOT 受注伝票番号). "
+    "ORDER NUMBER = 受注伝票番号 value. "
+    "INVOICE DATE = date shown next to the invoice title (format YYYY/MM/DD). "
+    "VENDOR NAME = company name in the top-left address block. "
+    "VENDOR ADDRESS = address in the top-left block. "
+    "CUSTOMER NAME = 最終出荷先 company name. "
+    "CUSTOMER ADDRESS = 最終出荷先 address. "
+    "SUBTOTAL = 小計 value. "
+    "TAX AMOUNT = 消費税 value. "
+    "TOTAL AMOUNT = 合計金額 value. "
+    "CURRENCY = JPY. "
+    "Do NOT include a header row. Output data values only, one line. Use N/A for missing fields. "
+    "Then on subsequent lines, list each line item as: ITEM CODE | ITEM NAME | QUANTITY | UNIT PRICE | AMOUNT. "
+    "Each line item is one row. No headers for line items either."
+)
+
+DOCWISE_MONTHLY_PROMPT = (
+    "This is a Japanese Monthly Invoice Statement (請求明細書). "
+    "Extract the following fields and return them pipe-separated on ONE line: "
+    "CUSTOMER CODE | COLL INVOICE NUMBER | INVOICE DATE | VENDOR NAME | CUSTOMER NAME | TOTAL AMOUNT | TAX AMOUNT | SUBTOTAL | CURRENCY. "
+    "Field definitions: "
+    "CUSTOMER CODE = customer code found in the last line of the address block, just before the Japanese text 御中. It is typically 6 digits. "
+    "COLL INVOICE NUMBER = the collective invoice number, exactly 10 digits. "
+    "INVOICE DATE = invoice date in YYYY/MM/DD format. "
+    "CURRENCY = JPY. "
+    "Do NOT include a header row. Output data values only, one line. Use N/A for missing fields. "
+    "Then list each line item as: ITEM CODE | ITEM NAME | QUANTITY | UNIT PRICE | AMOUNT."
 )
 
 MAX_ATTEMPTS = int(os.environ.get("DOCWISE_MAX_ATTEMPTS", 3))
@@ -59,9 +84,14 @@ def pick_response_text(docwise_response: dict) -> str:
     return str(docwise_response)
 
 
-def analyze_document(file_obj, filename: str, query: str = None) -> dict:
+def analyze_document(file_obj, filename: str, query: str = None, invoice_type: str = "daily") -> dict:
     api_key = os.environ.get("DOCWISE_API_KEY", "")
-    prompt = query or DOCWISE_INVOICE_PROMPT
+    if query:
+        prompt = query
+    elif invoice_type == "monthly":
+        prompt = DOCWISE_MONTHLY_PROMPT
+    else:
+        prompt = DOCWISE_DAILY_PROMPT
 
     headers = {}
     api_key = api_key.strip()
@@ -109,12 +139,28 @@ def analyze_document(file_obj, filename: str, query: str = None) -> dict:
     ) from last_error
 
 
-def extract_invoice_data(docwise_response: dict) -> dict:
+_HEADER_LABELS = {
+    "INVOICE NUMBER", "VENDOR NAME", "VENDOR ADDRESS", "CUSTOMER NAME",
+    "CUSTOMER ADDRESS", "INVOICE DATE", "DUE DATE", "TOTAL AMOUNT",
+    "TAX AMOUNT", "SUBTOTAL", "CURRENCY", "CUSTOMER CODE",
+    "COLL INVOICE NUMBER", "ORDER NUMBER", "DESCRIPTION", "QUANTITY",
+    "UNIT PRICE", "TOTAL", "ITEM CODE", "ITEM NAME", "AMOUNT",
+}
+
+
+def _is_header_line(parts: list) -> bool:
+    """Return True if all pipe-separated parts are known header label words."""
+    return bool(parts) and all(p.upper() in _HEADER_LABELS for p in parts if p)
+
+
+def extract_invoice_data(docwise_response: dict, invoice_type: str = "daily") -> dict:
     raw_text = pick_response_text(docwise_response)
     lines = [line.strip() for line in raw_text.split("\n") if line.strip()]
 
     fields = {
+        "customer_code": "N/A",
         "invoice_number": "N/A",
+        "order_number": "N/A",
         "vendor_name": "N/A",
         "vendor_address": "N/A",
         "customer_name": "N/A",
@@ -128,43 +174,58 @@ def extract_invoice_data(docwise_response: dict) -> dict:
         "line_items": [],
     }
 
-    # Parse header fields — expect first line to be pipe-separated header values
-    field_keys = [
-        "invoice_number",
-        "vendor_name",
-        "vendor_address",
-        "customer_name",
-        "customer_address",
-        "invoice_date",
-        "due_date",
-        "total_amount",
-        "tax_amount",
-        "subtotal",
-        "currency",
-    ]
+    if invoice_type == "monthly":
+        field_keys = [
+            "customer_code",
+            "invoice_number",
+            "invoice_date",
+            "vendor_name",
+            "customer_name",
+            "total_amount",
+            "tax_amount",
+            "subtotal",
+            "currency",
+        ]
+    else:
+        field_keys = [
+            "customer_code",
+            "invoice_number",
+            "order_number",
+            "invoice_date",
+            "vendor_name",
+            "vendor_address",
+            "customer_name",
+            "customer_address",
+            "subtotal",
+            "tax_amount",
+            "total_amount",
+            "currency",
+        ]
 
-    header_line = ""
+    header_parsed = False
     line_item_lines = []
-    in_line_items = False
 
     for line in lines:
         if "|" in line:
             parts = [p.strip() for p in line.split("|")]
-            if not in_line_items and not header_line:
-                # First pipe line = header fields
+            if _is_header_line(parts):
+                # Skip header label rows returned by the model
+                continue
+            if not header_parsed:
+                # First non-header pipe line = header field values
                 for i, key in enumerate(field_keys):
                     if i < len(parts):
                         fields[key] = parts[i] if parts[i] else "N/A"
-                header_line = line
+                header_parsed = True
             else:
                 # Subsequent pipe lines = line items
-                in_line_items = True
                 if len(parts) >= 4:
                     line_item_lines.append({
-                        "description": parts[0],
-                        "quantity": parts[1],
-                        "unit_price": parts[2],
-                        "total": parts[3],
+                        "item_code": parts[0],
+                        "item_name": parts[1],
+                        "quantity": parts[2],
+                        "unit_price": parts[3],
+                        "amount": parts[4] if len(parts) > 4 else "N/A",
                     })
 
     fields["line_items"] = line_item_lines

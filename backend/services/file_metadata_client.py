@@ -109,10 +109,11 @@ def create_invoice(
             job_id, filename, invoice_number, vendor_name, vendor_address,
             customer_name, customer_address, invoice_date, due_date,
             total_amount, tax_amount, subtotal, currency, line_items,
-            raw_text, blob_url, blob_path, upload_folder, status, user_id
+            raw_text, blob_url, blob_path, upload_folder, status, user_id,
+            customer_code, order_number
         ) VALUES (
             %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb,
-            %s, %s, %s, %s, 'processed', %s
+            %s, %s, %s, %s, 'processed', %s, %s, %s
         )
         RETURNING *
         """,
@@ -136,6 +137,8 @@ def create_invoice(
             blob_path,
             upload_folder,
             user_id,
+            invoice_data.get("customer_code"),
+            invoice_data.get("order_number"),
         ),
     )
     return dict(row) if row else {}

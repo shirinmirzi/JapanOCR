@@ -126,9 +126,19 @@ def init_database():
                     upload_folder TEXT,
                     status TEXT NOT NULL DEFAULT 'pending',
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                    user_id TEXT
+                    user_id TEXT,
+                    customer_code TEXT,
+                    order_number TEXT
                 )
             """)
+
+            # Add new columns to existing tables if they were created before this migration
+            cur.execute(
+                "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS customer_code TEXT"
+            )
+            cur.execute(
+                "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS order_number TEXT"
+            )
 
             # Indexes for jobs
             cur.execute(

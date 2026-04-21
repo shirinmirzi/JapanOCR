@@ -4,7 +4,7 @@ import os
 import tempfile
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
 
 from middleware.entra_auth import get_current_user
 from services.azure_storage_client import azure_storage_client
@@ -28,7 +28,7 @@ def _build_upload_folder() -> str:
     return f"uploads/{now.strftime('%Y/%m/%d')}"
 
 
-async def _process_single_file(file: UploadFile, user_id: str, job_id: str = None) -> dict:
+async def _process_single_file(file: UploadFile, user_id: str, job_id: str = None, invoice_type: str = "daily") -> dict:
     content = await file.read()
     filename = file.filename
     upload_folder = _build_upload_folder()
@@ -47,8 +47,8 @@ async def _process_single_file(file: UploadFile, user_id: str, job_id: str = Non
     invoice_data = {}
     try:
         with open(tmp_path, "rb") as f:
-            raw_response = analyze_document(f, filename)
-        invoice_data = extract_invoice_data(raw_response)
+            raw_response = analyze_document(f, filename, invoice_type=invoice_type)
+        invoice_data = extract_invoice_data(raw_response, invoice_type=invoice_type)
     except Exception as e:
         logger.error("OCR failed for %s: %s", filename, e)
         log_invoice_result(filename, "error", error=str(e), user_id=user_id)
@@ -83,7 +83,7 @@ async def _process_single_file(file: UploadFile, user_id: str, job_id: str = Non
     }
 
 
-def _background_bulk_process(job_id: str, files_data: list, user_id: str):
+def _background_bulk_process(job_id: str, files_data: list, user_id: str, invoice_type: str = "daily"):
     set_job_status(job_id, "processing")
     results = {}
     for item in files_data:
@@ -103,8 +103,8 @@ def _background_bulk_process(job_id: str, files_data: list, user_id: str):
 
         try:
             with open(tmp_path, "rb") as f:
-                raw_response = analyze_document(f, filename)
-            invoice_data = extract_invoice_data(raw_response)
+                raw_response = analyze_document(f, filename, invoice_type=invoice_type)
+            invoice_data = extract_invoice_data(raw_response, invoice_type=invoice_type)
             create_invoice(
                 job_id=job_id,
                 filename=filename,
@@ -139,14 +139,20 @@ def _background_bulk_process(job_id: str, files_data: list, user_id: str):
     set_job_results(job_id, results)
 
 
+_VALID_INVOICE_TYPES = {"daily", "monthly"}
+
+
 @router.post("/upload")
 async def upload_invoice(
     file: UploadFile = File(...),
+    invoice_type: str = Form("daily"),
     user: dict = Depends(get_current_user),
 ):
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
-    result = await _process_single_file(file, user["username"])
+    if invoice_type not in _VALID_INVOICE_TYPES:
+        raise HTTPException(status_code=400, detail="invoice_type must be 'daily' or 'monthly'")
+    result = await _process_single_file(file, user["username"], invoice_type=invoice_type)
     return result
 
 
@@ -154,10 +160,13 @@ async def upload_invoice(
 async def bulk_upload_invoices(
     background_tasks: BackgroundTasks,
     files: list[UploadFile] = File(...),
+    invoice_type: str = Form("daily"),
     user: dict = Depends(get_current_user),
 ):
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
+    if invoice_type not in _VALID_INVOICE_TYPES:
+        raise HTTPException(status_code=400, detail="invoice_type must be 'daily' or 'monthly'")
 
     filenames = [f.filename for f in files]
     job_id = create_job(filenames=filenames, user_id=user["username"])
@@ -172,6 +181,7 @@ async def bulk_upload_invoices(
         job_id,
         files_data,
         user["username"],
+        invoice_type,
     )
 
     return {"job_id": job_id, "accepted": len(files), "filenames": filenames}
