@@ -206,6 +206,7 @@ def extract_invoice_data(docwise_response: dict, invoice_type: str = "daily") ->
     line_item_lines = []
 
     for line in lines:
+        line = line.lstrip("-•* ").strip()
         if "|" in line:
             parts = [p.strip() for p in line.split("|")]
             if _is_header_line(parts):
