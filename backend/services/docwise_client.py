@@ -28,20 +28,34 @@ TIMEOUT_SEC = float(os.environ.get("DOCWISE_TIMEOUT_SEC", 120))
 def pick_response_text(docwise_response: dict) -> str:
     if not docwise_response:
         return ""
-    # Try common response fields
+    # Try nested paths in order (DocWise returns text at detail.data.query_response_data.response)
+    paths = [
+        ["detail", "data", "query_response_data", "response"],
+        ["data", "query_response_data", "response"],
+        ["query_response_data", "response"],
+        ["detail", "response"],
+        ["response"],
+    ]
+    for path in paths:
+        node = docwise_response
+        for key in path:
+            if not isinstance(node, dict):
+                break
+            node = node.get(key)
+        else:
+            if node:
+                if isinstance(node, str):
+                    return node
+                if isinstance(node, dict):
+                    for sub_key in ("content", "text"):
+                        val = node.get(sub_key)
+                        if val and isinstance(val, str):
+                            return val
+    # Fall back to top-level keys
     for key in ["answer", "text", "content", "result", "output", "response"]:
         val = docwise_response.get(key)
         if val and isinstance(val, str):
             return val
-    # Try nested structures
-    choices = docwise_response.get("choices", [])
-    if choices and isinstance(choices, list):
-        first = choices[0]
-        if isinstance(first, dict):
-            msg = first.get("message", {})
-            if isinstance(msg, dict):
-                return msg.get("content", "")
-            return first.get("text", "")
     return str(docwise_response)
 
 
@@ -50,15 +64,16 @@ def analyze_document(file_obj, filename: str, query: str = None) -> dict:
     prompt = query or DOCWISE_INVOICE_PROMPT
 
     headers = {}
+    api_key = api_key.strip()
     if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
+        headers["Authorization"] = f"DOCWISE {api_key}"
 
     last_error = None
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
             file_obj.seek(0)
-            files = {"file": (filename, file_obj, "application/pdf")}
-            data = {"query": prompt}
+            files = {"document": (filename, file_obj, "application/pdf")}
+            data = {"query": prompt, "length": "Long", "format": "Bullet points"}
             response = requests.post(
                 DOCWISE_URL,
                 headers=headers,
