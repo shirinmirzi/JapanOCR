@@ -1,8 +1,10 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 import logging
 import os
 from contextlib import asynccontextmanager
 
-from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -13,8 +15,6 @@ from routes.dashboard_routes import router as dashboard_router
 from routes.invoice_routes import router as invoice_router
 from routes.jobs_routes import router as jobs_router
 from routes.logs_routes import router as logs_router
-
-load_dotenv()
 
 logging.basicConfig(
     level=logging.INFO,
