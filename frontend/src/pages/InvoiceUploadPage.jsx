@@ -4,6 +4,42 @@ import ImportantNotice from '../components/ImportantNotice';
 import { uploadInvoice, bulkUploadInvoices, getBulkJob } from '../services/api';
 import { t } from '../i18n';
 
+// ── Invoice type toggle ────────────────────────────────────────────────────────
+
+function InvoiceTypeToggle({ value, onChange }) {
+  return (
+    <div className="mb-4">
+      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">{t('invoice_type')}</p>
+      <div className="flex gap-1 bg-gray-100 rounded-lg p-1 max-w-xs" role="radiogroup" aria-label={t('invoice_type')}>
+        <button
+          role="radio"
+          aria-checked={value === 'monthly'}
+          onClick={() => onChange('monthly')}
+          className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors ${
+            value === 'monthly'
+              ? 'bg-white text-gray-900 shadow'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          {t('invoice_type_monthly')}
+        </button>
+        <button
+          role="radio"
+          aria-checked={value === 'daily'}
+          onClick={() => onChange('daily')}
+          className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors ${
+            value === 'daily'
+              ? 'bg-white text-gray-900 shadow'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          {t('invoice_type_daily')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Single upload ──────────────────────────────────────────────────────────────
 
 const FIELD_LABELS = [
@@ -26,6 +62,7 @@ function SingleUpload() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  const [invoiceType, setInvoiceType] = useState('monthly');
   const inputRef = useRef();
 
   const handleFile = (f) => {
@@ -50,7 +87,7 @@ function SingleUpload() {
     setLoading(true);
     setError(null);
     try {
-      const data = await uploadInvoice(file);
+      const data = await uploadInvoice(file, invoiceType);
       setResult(data);
     } catch (err) {
       setError(err?.response?.data?.detail || err.message || 'Processing failed');
@@ -69,6 +106,7 @@ function SingleUpload() {
     <div>
       {!result ? (
         <div className="bg-white rounded-xl shadow p-6 max-w-2xl">
+          <InvoiceTypeToggle value={invoiceType} onChange={setInvoiceType} />
           <div
             className={`border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition-colors ${
               dragging ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-blue-400'
@@ -215,6 +253,7 @@ function BulkUpload() {
   const [rows, setRows] = useState([]);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState(null);
+  const [invoiceType, setInvoiceType] = useState('monthly');
   const pollRef = useRef(null);
 
   const stopPolling = useCallback(() => {
@@ -263,7 +302,7 @@ function BulkUpload() {
     setRunning(true);
     setError(null);
     try {
-      const data = await bulkUploadInvoices(files);
+      const data = await bulkUploadInvoices(files, invoiceType);
       localStorage.setItem('bulk_job_id', data.job_id);
       setJobId(data.job_id);
     } catch (err) {
@@ -292,6 +331,7 @@ function BulkUpload() {
       {!jobId ? (
         <div className="bg-white rounded-xl shadow p-6 max-w-2xl">
           <p className="text-gray-600 mb-4">{t('bulk_hint')}</p>
+          <InvoiceTypeToggle value={invoiceType} onChange={setInvoiceType} />
           <div className="flex gap-3 items-center">
             <input
               ref={inputRef}
