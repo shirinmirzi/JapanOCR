@@ -33,7 +33,6 @@ export default function Header() {
 
   const navItems = [
     { to: '/upload', label: t('nav_upload') },
-    { to: '/jobs', label: t('nav_jobs') },
     { to: '/logs', label: t('nav_logs') },
     { to: '/dashboard', label: t('nav_dashboard') },
   ];
