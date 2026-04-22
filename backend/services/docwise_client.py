@@ -213,6 +213,22 @@ def extract_invoice_data(docwise_response: dict, invoice_type: str = "daily") ->
                         "amount": parts[4] if len(parts) > 4 else "N/A",
                     })
 
+    # Fallback for daily invoices: parse LABEL: value format when pipe parsing found nothing
+    if invoice_type == "daily" and fields["customer_code"] == "N/A" and fields["invoice_number"] == "N/A":
+        label_map = {
+            "CUSTOMER CODE": "customer_code",
+            "DELIVERY NOTE NUMBER": "invoice_number",
+            "INVOICE DATE": "invoice_date",
+        }
+        for line in lines:
+            clean = line.lstrip("-•* ").strip()
+            for label, field_key in label_map.items():
+                if clean.upper().startswith(label + ":"):
+                    value = clean[len(label) + 1:].strip()
+                    if value:
+                        fields[field_key] = value
+                    break
+
     fields["line_items"] = line_item_lines
     fields["raw_text"] = raw_text
     return fields

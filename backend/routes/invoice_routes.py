@@ -1,6 +1,7 @@
 import contextlib
 import logging
 import os
+import re
 import tempfile
 from datetime import datetime, timezone
 
@@ -31,7 +32,10 @@ def _build_upload_folder() -> str:
 def _build_execution_folder(user_date: str = None) -> str:
     """Returns e.g. '20250430_143022' or '20250422_143022' if no date given."""
     now = datetime.now(timezone.utc)
-    date_part = user_date if user_date else now.strftime('%Y%m%d')
+    if user_date and re.fullmatch(r'\d{8}', user_date):
+        date_part = user_date
+    else:
+        date_part = now.strftime('%Y%m%d')
     time_part = now.strftime('%H%M%S')
     return f"{date_part}_{time_part}"
 
@@ -265,6 +269,8 @@ async def upload_invoice(
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
     if invoice_type not in _VALID_INVOICE_TYPES:
         raise HTTPException(status_code=400, detail="invoice_type must be 'daily' or 'monthly'")
+    if user_date and not re.fullmatch(r'\d{8}', user_date):
+        raise HTTPException(status_code=400, detail="user_date must be exactly 8 digits (YYYYMMDD)")
     result = await _process_single_file(
         file, user["username"], invoice_type=invoice_type, user_date=user_date
     )
@@ -283,6 +289,8 @@ async def bulk_upload_invoices(
         raise HTTPException(status_code=400, detail="No files provided")
     if invoice_type not in _VALID_INVOICE_TYPES:
         raise HTTPException(status_code=400, detail="invoice_type must be 'daily' or 'monthly'")
+    if user_date and not re.fullmatch(r'\d{8}', user_date):
+        raise HTTPException(status_code=400, detail="user_date must be exactly 8 digits (YYYYMMDD)")
 
     execution_folder = _build_execution_folder(user_date)
     filenames = [f.filename for f in files]
