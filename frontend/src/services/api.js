@@ -69,20 +69,22 @@ export async function logout() {
 }
 
 // Invoice operations
-export async function uploadInvoice(file, invoiceType = 'monthly') {
+export async function uploadInvoice(file, invoiceType = 'daily', userDate = null) {
   const headers = await getAuthHeader();
   const formData = new FormData();
   formData.append('file', file);
   formData.append('invoice_type', invoiceType);
+  if (userDate) formData.append('user_date', userDate);
   const response = await axios.post(`${BASE_URL}/api/invoices/upload`, formData, { headers });
   return response.data;
 }
 
-export async function bulkUploadInvoices(files, invoiceType = 'monthly') {
+export async function bulkUploadInvoices(files, invoiceType = 'daily', userDate = null) {
   const headers = await getAuthHeader();
   const formData = new FormData();
   files.forEach((f) => formData.append('files', f));
   formData.append('invoice_type', invoiceType);
+  if (userDate) formData.append('user_date', userDate);
   const response = await axios.post(`${BASE_URL}/api/invoices/bulk-upload`, formData, { headers });
   return response.data;
 }

@@ -12,24 +12,16 @@ DOCWISE_URL = os.environ.get(
 )
 DOCWISE_DAILY_PROMPT = (
     "This is a Japanese Delivery Note and Invoice (納品書兼請求書). "
-    "Extract the following fields and return them pipe-separated on ONE line: "
-    "CUSTOMER CODE | INVOICE NUMBER | ORDER NUMBER | INVOICE DATE | VENDOR NAME | VENDOR ADDRESS | CUSTOMER NAME | CUSTOMER ADDRESS | SUBTOTAL | TAX AMOUNT | TOTAL AMOUNT | CURRENCY. "
+    "Extract ONLY the following 3 fields and return them pipe-separated on ONE line: "
+    "CUSTOMER CODE | DELIVERY NOTE NUMBER | INVOICE DATE. "
     "Field definitions: "
-    "CUSTOMER CODE = 顧客番号 value. "
-    "INVOICE NUMBER = 納品書番号 value (NOT 受注伝票番号). "
-    "ORDER NUMBER = 受注伝票番号 value. "
-    "INVOICE DATE = date shown next to the invoice title (format YYYY/MM/DD). "
-    "VENDOR NAME = company name in the top-left address block. "
-    "VENDOR ADDRESS = address in the top-left block. "
-    "CUSTOMER NAME = 最終出荷先 company name. "
-    "CUSTOMER ADDRESS = 最終出荷先 address. "
-    "SUBTOTAL = 小計 value. "
-    "TAX AMOUNT = 消費税 value. "
-    "TOTAL AMOUNT = 合計金額 value. "
-    "CURRENCY = JPY. "
-    "Do NOT include a header row. Output data values only, one line. Use N/A for missing fields. "
-    "Then on subsequent lines, list each line item as: ITEM CODE | ITEM NAME | QUANTITY | UNIT PRICE | AMOUNT. "
-    "Each line item is one row. No headers for line items either."
+    "CUSTOMER CODE = the value next to the label '顧客番号' in the detail table on the right side of the document. "
+    "DELIVERY NOTE NUMBER = the large bold number displayed prominently in the document title header area, "
+    "immediately next to or below the text '納品書兼請求書'. "
+    "This is the document identifier shown in the title box (e.g. 8039444200). "
+    "It is NOT the 受注伝票番号, NOT the 納品書番号, NOT the 顧客番号 from the table rows. "
+    "INVOICE DATE = the date shown in the title header area next to the document number, format YYYY/MM/DD. "
+    "Do NOT include a header row. Output data values only, one line. Use N/A for missing fields."
 )
 
 DOCWISE_MONTHLY_PROMPT = (
@@ -145,6 +137,7 @@ _HEADER_LABELS = {
     "TAX AMOUNT", "SUBTOTAL", "CURRENCY", "CUSTOMER CODE",
     "COLL INVOICE NUMBER", "ORDER NUMBER", "DESCRIPTION", "QUANTITY",
     "UNIT PRICE", "TOTAL", "ITEM CODE", "ITEM NAME", "AMOUNT",
+    "DELIVERY NOTE NUMBER",
 }
 
 
@@ -190,16 +183,7 @@ def extract_invoice_data(docwise_response: dict, invoice_type: str = "daily") ->
         field_keys = [
             "customer_code",
             "invoice_number",
-            "order_number",
             "invoice_date",
-            "vendor_name",
-            "vendor_address",
-            "customer_name",
-            "customer_address",
-            "subtotal",
-            "tax_amount",
-            "total_amount",
-            "currency",
         ]
 
     header_parsed = False
