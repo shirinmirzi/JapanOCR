@@ -30,6 +30,9 @@ yarn-error.log*
 !.env.example
 !**/.env.example
 
+# Local PDF storage (fallback when Azure not configured)
+backend/storage_pdf/
+
 # Misc
 *.log
 *.tmp
