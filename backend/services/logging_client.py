@@ -13,7 +13,17 @@ def log_invoice_result(
     error: str = None,
     metadata: dict = None,
     user_id: str = None,
+    renamed_filename: str = None,
+    folder_name: str = None,
+    execution_folder: str = None,
 ):
+    merged_metadata = dict(metadata) if metadata else {}
+    if renamed_filename is not None:
+        merged_metadata["renamed_filename"] = renamed_filename
+    if folder_name is not None:
+        merged_metadata["folder_name"] = folder_name
+    if execution_folder is not None:
+        merged_metadata["execution_folder"] = execution_folder
     try:
         execute_write(
             """
@@ -25,7 +35,7 @@ def log_invoice_result(
                 status,
                 message,
                 error,
-                json.dumps(metadata) if metadata else None,
+                json.dumps(merged_metadata) if merged_metadata else None,
                 user_id,
             ),
         )
@@ -89,7 +99,19 @@ def get_logs_paged(
     offset = (page - 1) * page_size
     data_sql = f"SELECT * FROM logs {where} ORDER BY {sort_by} {sort_dir} LIMIT %s OFFSET %s"
     rows = execute_query(data_sql, (params or []) + [page_size, offset])
-    items = [dict(r) for r in rows]
+    items = []
+    for r in rows:
+        item = dict(r)
+        meta = item.get("metadata") or {}
+        if isinstance(meta, str):
+            try:
+                meta = json.loads(meta)
+            except Exception:
+                meta = {}
+        item["renamed_filename"] = meta.get("renamed_filename")
+        item["folder_name"] = meta.get("folder_name")
+        item["execution_folder"] = meta.get("execution_folder")
+        items.append(item)
 
     return {
         "items": items,

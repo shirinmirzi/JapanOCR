@@ -106,7 +106,14 @@ async def _process_single_file(
         logger.warning("Failed to upload %s to Azure: %s", dest_name, e)
 
     if ocr_error:
-        log_invoice_result(filename, "error", error=ocr_error, user_id=user_id)
+        log_invoice_result(
+            filename,
+            "error",
+            error=ocr_error,
+            user_id=user_id,
+            folder_name=output_folder,
+            execution_folder=execution_folder,
+        )
         record = create_invoice(
             job_id=job_id,
             filename=filename,
@@ -142,6 +149,9 @@ async def _process_single_file(
         "success",
         message="Invoice processed",
         user_id=user_id,
+        renamed_filename=renamed_filename,
+        folder_name=output_folder,
+        execution_folder=execution_folder,
     )
     return {
         **invoice_data,
@@ -221,7 +231,14 @@ def _background_bulk_process(job_id: str, files_data: list, user_id: str, invoic
                 "renamed_filename": None,
                 "output_folder": output_folder,
             }
-            log_invoice_result(filename, "error", error=ocr_error, user_id=user_id)
+            log_invoice_result(
+                filename,
+                "error",
+                error=ocr_error,
+                user_id=user_id,
+                folder_name=output_folder,
+                execution_folder=execution_folder,
+            )
         else:
             create_invoice(
                 job_id=job_id,
@@ -243,6 +260,9 @@ def _background_bulk_process(job_id: str, files_data: list, user_id: str, invoic
                 "success",
                 message="Bulk invoice processed",
                 user_id=user_id,
+                renamed_filename=renamed_filename,
+                folder_name=output_folder,
+                execution_folder=execution_folder,
             )
 
         increment_processed(job_id)
