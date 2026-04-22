@@ -42,7 +42,13 @@ function InvoiceTypeToggle({ value, onChange }) {
 
 // ── Single upload ──────────────────────────────────────────────────────────────
 
-const FIELD_LABELS = [
+const DAILY_FIELD_LABELS = [
+  ['customer_code', 'customer_code'],
+  ['invoice_number', 'invoice_number'],
+  ['invoice_date', 'invoice_date'],
+];
+
+const MONTHLY_FIELD_LABELS = [
   ['invoice_number', 'invoice_number'],
   ['vendor_name', 'vendor_name'],
   ['vendor_address', 'vendor_address'],
@@ -62,7 +68,9 @@ function SingleUpload() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
-  const [invoiceType, setInvoiceType] = useState('monthly');
+  const [invoiceType, setInvoiceType] = useState('daily');
+  const [userDate, setUserDate] = useState('');
+  const [dateError, setDateError] = useState(null);
   const inputRef = useRef();
 
   const handleFile = (f) => {
@@ -82,12 +90,26 @@ function SingleUpload() {
     handleFile(f);
   };
 
+  const handleDateChange = (e) => {
+    const val = e.target.value;
+    setUserDate(val);
+    if (val && !/^\d{8}$/.test(val)) {
+      setDateError('Date must be exactly 8 digits (YYYYMMDD)');
+    } else {
+      setDateError(null);
+    }
+  };
+
   const handleProcess = async () => {
     if (!file) return;
+    if (userDate && !/^\d{8}$/.test(userDate)) {
+      setDateError('Date must be exactly 8 digits (YYYYMMDD)');
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      const data = await uploadInvoice(file, invoiceType);
+      const data = await uploadInvoice(file, invoiceType, userDate || null);
       setResult(data);
     } catch (err) {
       setError(err?.response?.data?.detail || err.message || 'Processing failed');
@@ -100,13 +122,35 @@ function SingleUpload() {
     setFile(null);
     setResult(null);
     setError(null);
+    setUserDate('');
+    setDateError(null);
   };
+
+  const fieldLabels = invoiceType === 'daily' ? DAILY_FIELD_LABELS : MONTHLY_FIELD_LABELS;
 
   return (
     <div>
       {!result ? (
         <div className="bg-white rounded-xl shadow p-6 w-full">
           <InvoiceTypeToggle value={invoiceType} onChange={setInvoiceType} />
+
+          <div className="mb-4">
+            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
+              処理日付 (Processing Date)
+            </label>
+            <input
+              type="text"
+              value={userDate}
+              onChange={handleDateChange}
+              placeholder="YYYYMMDD e.g. 20250430"
+              maxLength={8}
+              className="w-full sm:w-64 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+            />
+            {dateError && (
+              <p className="mt-1 text-xs text-red-600">{dateError}</p>
+            )}
+          </div>
+
           <div
             className={`border-2 border-dashed rounded-xl p-6 sm:p-10 text-center cursor-pointer transition-colors ${
               dragging ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-blue-400'
@@ -145,7 +189,7 @@ function SingleUpload() {
             </button>
             <button
               onClick={handleProcess}
-              disabled={!file || loading}
+              disabled={!file || loading || !!dateError}
               className="px-6 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-50 transition-opacity hover:opacity-90"
               style={{ backgroundColor: '#009DD0' }}
             >
@@ -158,12 +202,41 @@ function SingleUpload() {
           <div className="bg-white rounded-xl shadow p-6 mb-4">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-gray-900">Invoice Data Extracted</h2>
-              <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800 font-medium">
-                ✓ Processed
+              <span className={`px-2 py-1 text-xs rounded-full font-medium ${result.output_folder === 'Error' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
+                {result.output_folder === 'Error' ? '✗ Error' : '✓ Processed'}
               </span>
             </div>
+
+            {invoiceType === 'daily' && (
+              <div className="mb-4 p-4 bg-gray-50 rounded-lg space-y-2">
+                {result.renamed_filename && (
+                  <p className="text-sm">
+                    <span className="font-medium">✅ Renamed filename:</span>{' '}
+                    <span className="font-mono text-blue-700">{result.renamed_filename}</span>
+                  </p>
+                )}
+                <p className="text-sm">
+                  <span className="font-medium">📁 Output folder:</span>{' '}
+                  <span className={`font-medium ${result.output_folder === 'Error' ? 'text-red-600' : 'text-green-600'}`}>
+                    {result.output_folder}
+                  </span>
+                </p>
+                {result.execution_folder && (
+                  <p className="text-sm">
+                    <span className="font-medium">🗂️ Execution folder:</span>{' '}
+                    <span className="font-mono text-gray-700">{result.execution_folder}</span>
+                  </p>
+                )}
+                {result.blob_path && (
+                  <p className="text-sm text-gray-500 break-all">
+                    <span className="font-medium">Blob path:</span> {result.blob_path}
+                  </p>
+                )}
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-4">
-              {FIELD_LABELS.map(([key, label]) => (
+              {fieldLabels.map(([key, label]) => (
                 <div key={key} className={key.includes('address') ? 'col-span-2' : ''}>
                   <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">{t(label)}</p>
                   <p className="text-sm font-medium text-gray-900">{result[key] || '—'}</p>
@@ -238,8 +311,8 @@ function buildRowsFromJob(job) {
       filename,
       status: r ? r.status : (job.status === 'done' ? 'done' : 'pending'),
       invoice_number: r?.invoice_number || '—',
-      vendor_name: r?.vendor_name || '—',
-      total_amount: r?.total_amount || '—',
+      renamed_filename: r?.renamed_filename || '—',
+      output_folder: r?.output_folder || '—',
     };
   });
 }
@@ -253,7 +326,9 @@ function BulkUpload() {
   const [rows, setRows] = useState([]);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState(null);
-  const [invoiceType, setInvoiceType] = useState('monthly');
+  const [invoiceType, setInvoiceType] = useState('daily');
+  const [userDate, setUserDate] = useState('');
+  const [dateError, setDateError] = useState(null);
   const pollRef = useRef(null);
 
   const stopPolling = useCallback(() => {
@@ -297,12 +372,26 @@ function BulkUpload() {
     setError(null);
   };
 
+  const handleDateChange = (e) => {
+    const val = e.target.value;
+    setUserDate(val);
+    if (val && !/^\d{8}$/.test(val)) {
+      setDateError('Date must be exactly 8 digits (YYYYMMDD)');
+    } else {
+      setDateError(null);
+    }
+  };
+
   const handleStart = async () => {
     if (!files.length) return;
+    if (userDate && !/^\d{8}$/.test(userDate)) {
+      setDateError('Date must be exactly 8 digits (YYYYMMDD)');
+      return;
+    }
     setRunning(true);
     setError(null);
     try {
-      const data = await bulkUploadInvoices(files, invoiceType);
+      const data = await bulkUploadInvoices(files, invoiceType, userDate || null);
       localStorage.setItem('bulk_job_id', data.job_id);
       setJobId(data.job_id);
     } catch (err) {
@@ -320,6 +409,8 @@ function BulkUpload() {
     setFiles([]);
     setRunning(false);
     setError(null);
+    setUserDate('');
+    setDateError(null);
   };
 
   const progress = job
@@ -332,6 +423,24 @@ function BulkUpload() {
         <div className="bg-white rounded-xl shadow p-6 w-full">
           <p className="text-gray-600 mb-4">{t('bulk_hint')}</p>
           <InvoiceTypeToggle value={invoiceType} onChange={setInvoiceType} />
+
+          <div className="mb-4">
+            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
+              処理日付 (Processing Date)
+            </label>
+            <input
+              type="text"
+              value={userDate}
+              onChange={handleDateChange}
+              placeholder="YYYYMMDD e.g. 20250430"
+              maxLength={8}
+              className="w-full sm:w-64 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+            />
+            {dateError && (
+              <p className="mt-1 text-xs text-red-600">{dateError}</p>
+            )}
+          </div>
+
           <div className="flex gap-3 items-center">
             <input
               ref={inputRef}
@@ -352,7 +461,7 @@ function BulkUpload() {
             )}
             <button
               onClick={handleStart}
-              disabled={!files.length || running}
+              disabled={!files.length || running || !!dateError}
               className="px-6 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-50"
               style={{ backgroundColor: '#009DD0' }}
             >
@@ -413,8 +522,8 @@ function BulkUpload() {
                   <th className="px-4 py-3 text-left font-medium text-gray-600">{t('bulk_col_file')}</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-600">{t('bulk_col_status')}</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-600">{t('bulk_col_invoice_num')}</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">{t('bulk_col_vendor')}</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">{t('bulk_col_total')}</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600">Renamed Filename</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600">Output Folder</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -432,8 +541,15 @@ function BulkUpload() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-gray-700">{row.invoice_number}</td>
-                    <td className="px-4 py-3 text-gray-700">{row.vendor_name}</td>
-                    <td className="px-4 py-3 text-gray-700">{row.total_amount}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-blue-700 max-w-xs truncate">{row.renamed_filename}</td>
+                    <td className="px-4 py-3">
+                      {row.output_folder !== '—' && (
+                        <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${row.output_folder === 'Error' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
+                          {row.output_folder}
+                        </span>
+                      )}
+                      {row.output_folder === '—' && <span className="text-gray-400">—</span>}
+                    </td>
                   </tr>
                 ))}
                 {rows.length === 0 && (

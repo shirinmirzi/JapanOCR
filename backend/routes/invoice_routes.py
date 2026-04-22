@@ -28,37 +28,101 @@ def _build_upload_folder() -> str:
     return f"uploads/{now.strftime('%Y/%m/%d')}"
 
 
-async def _process_single_file(file: UploadFile, user_id: str, job_id: str = None, invoice_type: str = "daily") -> dict:
+def _build_execution_folder(user_date: str = None) -> str:
+    """Returns e.g. '20250430_143022' or '20250422_143022' if no date given."""
+    now = datetime.now(timezone.utc)
+    date_part = user_date if user_date else now.strftime('%Y%m%d')
+    time_part = now.strftime('%H%M%S')
+    return f"{date_part}_{time_part}"
+
+
+def _build_renamed_filename(customer_code: str, invoice_number: str, invoice_date: str, user_date: str = None) -> str:
+    """Build renamed filename: CustomerCode_InvoiceNumber_YYYYMMDD納品書兼請求書.pdf"""
+    if user_date:
+        date_str = user_date
+    elif invoice_date and invoice_date != "N/A":
+        date_str = invoice_date.replace("/", "").replace("-", "")
+    else:
+        date_str = datetime.now(timezone.utc).strftime('%Y%m%d')
+    return f"{customer_code}_{invoice_number}_{date_str}納品書兼請求書.pdf"
+
+
+async def _process_single_file(
+    file: UploadFile,
+    user_id: str,
+    job_id: str = None,
+    invoice_type: str = "daily",
+    user_date: str = None,
+    execution_folder: str = None,
+) -> dict:
     content = await file.read()
     filename = file.filename
-    upload_folder = _build_upload_folder()
-    blob_path = f"{upload_folder}/{filename}"
 
-    blob_url = None
-    try:
-        blob_url = azure_storage_client.upload_file(content, blob_path)
-    except Exception as e:
-        logger.warning("Failed to upload %s to Azure: %s", filename, e)
+    if execution_folder is None:
+        execution_folder = _build_execution_folder(user_date)
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
         tmp.write(content)
         tmp_path = tmp.name
 
     invoice_data = {}
+    ocr_error = None
     try:
         with open(tmp_path, "rb") as f:
             raw_response = analyze_document(f, filename, invoice_type=invoice_type)
         invoice_data = extract_invoice_data(raw_response, invoice_type=invoice_type)
     except Exception as e:
         logger.error("OCR failed for %s: %s", filename, e)
-        log_invoice_result(filename, "error", error=str(e), user_id=user_id)
-        raise HTTPException(
-            status_code=500,
-            detail=f"OCR processing failed: {e}",
-        ) from e
+        ocr_error = str(e)
     finally:
         with contextlib.suppress(Exception):
             os.unlink(tmp_path)
+
+    # Determine output subfolder and renamed filename (daily only)
+    renamed_filename = None
+    output_folder = "ProcessedFiles"
+    if invoice_type == "daily":
+        customer_code = invoice_data.get("customer_code", "N/A")
+        invoice_number = invoice_data.get("invoice_number", "N/A")
+        invoice_date = invoice_data.get("invoice_date", "N/A")
+        if ocr_error or customer_code == "N/A" or invoice_number == "N/A":
+            output_folder = "Error"
+        else:
+            renamed_filename = _build_renamed_filename(
+                customer_code, invoice_number, invoice_date, user_date
+            )
+
+    dest_name = renamed_filename if renamed_filename else filename
+    blob_path = f"executions/{execution_folder}/{output_folder}/{dest_name}"
+
+    blob_url = None
+    try:
+        blob_url = azure_storage_client.upload_file(content, blob_path)
+    except Exception as e:
+        logger.warning("Failed to upload %s to Azure: %s", dest_name, e)
+
+    if ocr_error:
+        log_invoice_result(filename, "error", error=ocr_error, user_id=user_id)
+        record = create_invoice(
+            job_id=job_id,
+            filename=filename,
+            invoice_data=invoice_data,
+            blob_url=blob_url,
+            blob_path=blob_path,
+            upload_folder=f"executions/{execution_folder}/{output_folder}",
+            user_id=user_id,
+        )
+        return {
+            **invoice_data,
+            "id": record.get("id"),
+            "blob_url": blob_url,
+            "filename": filename,
+            "renamed_filename": None,
+            "output_folder": output_folder,
+            "execution_folder": execution_folder,
+            "blob_path": blob_path,
+            "error": ocr_error,
+        }
 
     record = create_invoice(
         job_id=job_id,
@@ -66,7 +130,7 @@ async def _process_single_file(file: UploadFile, user_id: str, job_id: str = Non
         invoice_data=invoice_data,
         blob_url=blob_url,
         blob_path=blob_path,
-        upload_folder=upload_folder,
+        upload_folder=f"executions/{execution_folder}/{output_folder}",
         user_id=user_id,
     )
     log_invoice_result(
@@ -80,31 +144,64 @@ async def _process_single_file(file: UploadFile, user_id: str, job_id: str = Non
         "id": record.get("id"),
         "blob_url": blob_url,
         "filename": filename,
+        "renamed_filename": renamed_filename,
+        "output_folder": output_folder,
+        "execution_folder": execution_folder,
+        "blob_path": blob_path,
     }
 
 
-def _background_bulk_process(job_id: str, files_data: list, user_id: str, invoice_type: str = "daily"):
+def _background_bulk_process(job_id: str, files_data: list, user_id: str, invoice_type: str = "daily", execution_folder: str = None):
+    if execution_folder is None:
+        execution_folder = _build_execution_folder()
     set_job_status(job_id, "processing")
     results = {}
     for item in files_data:
         filename = item["filename"]
         content = item["content"]
-        upload_folder = _build_upload_folder()
-        blob_path = f"{upload_folder}/{filename}"
-        blob_url = None
-        try:
-            blob_url = azure_storage_client.upload_file(content, blob_path)
-        except Exception as e:
-            logger.warning("Failed to upload %s to Azure: %s", filename, e)
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
             tmp.write(content)
             tmp_path = tmp.name
 
+        invoice_data = {}
+        ocr_error = None
         try:
             with open(tmp_path, "rb") as f:
                 raw_response = analyze_document(f, filename, invoice_type=invoice_type)
             invoice_data = extract_invoice_data(raw_response, invoice_type=invoice_type)
+        except Exception as e:
+            logger.error("Bulk OCR failed for %s: %s", filename, e)
+            ocr_error = str(e)
+        finally:
+            with contextlib.suppress(Exception):
+                os.unlink(tmp_path)
+
+        # Determine output subfolder and renamed filename (daily only)
+        renamed_filename = None
+        output_folder = "ProcessedFiles"
+        if invoice_type == "daily":
+            customer_code = invoice_data.get("customer_code", "N/A")
+            invoice_number = invoice_data.get("invoice_number", "N/A")
+            invoice_date = invoice_data.get("invoice_date", "N/A")
+            user_date = item.get("user_date")
+            if ocr_error or customer_code == "N/A" or invoice_number == "N/A":
+                output_folder = "Error"
+            else:
+                renamed_filename = _build_renamed_filename(
+                    customer_code, invoice_number, invoice_date, user_date
+                )
+
+        dest_name = renamed_filename if renamed_filename else filename
+        blob_path = f"executions/{execution_folder}/{output_folder}/{dest_name}"
+        blob_url = None
+        try:
+            blob_url = azure_storage_client.upload_file(content, blob_path)
+        except Exception as e:
+            logger.warning("Failed to upload %s to Azure: %s", dest_name, e)
+
+        upload_folder = f"executions/{execution_folder}/{output_folder}"
+        if ocr_error:
             create_invoice(
                 job_id=job_id,
                 filename=filename,
@@ -114,20 +211,35 @@ def _background_bulk_process(job_id: str, files_data: list, user_id: str, invoic
                 upload_folder=upload_folder,
                 user_id=user_id,
             )
-            results[filename] = {"status": "done", **invoice_data}
+            results[filename] = {
+                "status": "failed",
+                "error": ocr_error,
+                "renamed_filename": None,
+                "output_folder": output_folder,
+            }
+            log_invoice_result(filename, "error", error=ocr_error, user_id=user_id)
+        else:
+            create_invoice(
+                job_id=job_id,
+                filename=filename,
+                invoice_data=invoice_data,
+                blob_url=blob_url,
+                blob_path=blob_path,
+                upload_folder=upload_folder,
+                user_id=user_id,
+            )
+            results[filename] = {
+                "status": "done",
+                **invoice_data,
+                "renamed_filename": renamed_filename,
+                "output_folder": output_folder,
+            }
             log_invoice_result(
                 filename,
                 "success",
                 message="Bulk invoice processed",
                 user_id=user_id,
             )
-        except Exception as e:
-            logger.error("Bulk OCR failed for %s: %s", filename, e)
-            results[filename] = {"status": "failed", "error": str(e)}
-            log_invoice_result(filename, "error", error=str(e), user_id=user_id)
-        finally:
-            with contextlib.suppress(Exception):
-                os.unlink(tmp_path)
 
         increment_processed(job_id)
 
@@ -146,13 +258,16 @@ _VALID_INVOICE_TYPES = {"daily", "monthly"}
 async def upload_invoice(
     file: UploadFile = File(...),
     invoice_type: str = Form("daily"),
+    user_date: str = Form(None),
     user: dict = Depends(get_current_user),
 ):
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
     if invoice_type not in _VALID_INVOICE_TYPES:
         raise HTTPException(status_code=400, detail="invoice_type must be 'daily' or 'monthly'")
-    result = await _process_single_file(file, user["username"], invoice_type=invoice_type)
+    result = await _process_single_file(
+        file, user["username"], invoice_type=invoice_type, user_date=user_date
+    )
     return result
 
 
@@ -161,6 +276,7 @@ async def bulk_upload_invoices(
     background_tasks: BackgroundTasks,
     files: list[UploadFile] = File(...),
     invoice_type: str = Form("daily"),
+    user_date: str = Form(None),
     user: dict = Depends(get_current_user),
 ):
     if not files:
@@ -168,13 +284,14 @@ async def bulk_upload_invoices(
     if invoice_type not in _VALID_INVOICE_TYPES:
         raise HTTPException(status_code=400, detail="invoice_type must be 'daily' or 'monthly'")
 
+    execution_folder = _build_execution_folder(user_date)
     filenames = [f.filename for f in files]
     job_id = create_job(filenames=filenames, user_id=user["username"])
 
     files_data = []
     for f in files:
         content = await f.read()
-        files_data.append({"filename": f.filename, "content": content})
+        files_data.append({"filename": f.filename, "content": content, "user_date": user_date})
 
     background_tasks.add_task(
         _background_bulk_process,
@@ -182,9 +299,10 @@ async def bulk_upload_invoices(
         files_data,
         user["username"],
         invoice_type,
+        execution_folder,
     )
 
-    return {"job_id": job_id, "accepted": len(files), "filenames": filenames}
+    return {"job_id": job_id, "accepted": len(files), "filenames": filenames, "execution_folder": execution_folder}
 
 
 @router.get("/paged")
