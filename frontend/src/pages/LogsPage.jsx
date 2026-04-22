@@ -2,23 +2,54 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { getLogsPaged } from '../services/api';
 import { t } from '../i18n';
 
+const STATUS_OPTIONS = [
+  'success', 'error', 'failed', 'timeout', 'info',
+  'processed', 'not_found', 'completed', 'incomplete', 'cancelled', 'processing',
+];
+
 const statusBadge = (status) => {
   const map = {
-    success: 'bg-green-100 text-green-800',
-    error: 'bg-red-100 text-red-800',
-    failed: 'bg-red-100 text-red-800',
-    timeout: 'bg-orange-100 text-orange-800',
-    info: 'bg-blue-100 text-blue-800',
+    success:    'bg-green-100 text-green-800',
+    processed:  'bg-green-100 text-green-800',
+    completed:  'bg-green-100 text-green-800',
+    done:       'bg-green-100 text-green-800',
+    error:      'bg-red-100 text-red-800',
+    failed:     'bg-red-100 text-red-800',
+    not_found:  'bg-red-100 text-red-800',
+    incomplete: 'bg-orange-100 text-orange-800',
+    timeout:    'bg-orange-100 text-orange-800',
+    partial:    'bg-orange-100 text-orange-800',
+    processing: 'bg-blue-100 text-blue-800',
+    info:       'bg-blue-100 text-blue-800',
+    cancelled:  'bg-gray-100 text-gray-600',
+    queued:     'bg-yellow-100 text-yellow-800',
+    pending:    'bg-yellow-100 text-yellow-800',
   };
   return map[status] || 'bg-gray-100 text-gray-600';
 };
 
 function exportCSV(items) {
-  const headers = ['Timestamp', 'Filename', 'Status', 'Message', 'User'];
+  const headers = [
+    t('logs_col_timestamp'),
+    t('logs_col_filename'),
+    t('logs_col_renamed'),
+    t('logs_col_folder'),
+    t('logs_col_status'),
+    t('logs_col_message'),
+    t('logs_col_user'),
+  ];
   const rows = items.map((r) => [
-    r.timestamp, r.filename, r.status, r.message || '', r.user_id || '',
+    r.timestamp,
+    r.filename,
+    r.renamed_filename || '',
+    r.folder_name || '',
+    r.status,
+    r.message || r.error || '',
+    r.user_id || '',
   ]);
-  const csv = [headers, ...rows].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const csv = [headers, ...rows]
+    .map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','))
+    .join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -69,13 +100,15 @@ export default function LogsPage() {
   }, [autoRefresh, load]);
 
   const toggleStatus = (s) =>
-    setStatuses((prev) => prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]);
+    setStatuses((prev) =>
+      prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]
+    );
 
-  const formatDate = (ts) => ts ? new Date(ts).toLocaleString() : '—';
-  const STATUS_OPTIONS = ['success', 'error', 'failed', 'timeout', 'info'];
+  const formatDate = (ts) => (ts ? new Date(ts).toLocaleString() : '—');
 
   return (
     <div>
+      {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold text-gray-900">{t('logs_title')}</h1>
         <div className="flex gap-2">
@@ -83,7 +116,7 @@ export default function LogsPage() {
             onClick={() => exportCSV(data.items)}
             className="px-3 py-1.5 text-xs border border-gray-300 rounded hover:bg-gray-50"
           >
-            Export CSV
+            {t('logs_export_csv')}
           </button>
           <label className="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer">
             <input
@@ -92,7 +125,7 @@ export default function LogsPage() {
               onChange={(e) => setAutoRefresh(e.target.checked)}
               className="rounded"
             />
-            Auto-refresh
+            {t('logs_auto_refresh')}
           </label>
         </div>
       </div>
@@ -105,12 +138,12 @@ export default function LogsPage() {
             type="text"
             value={q}
             onChange={(e) => { setQ(e.target.value); setPage(1); }}
-            placeholder="filename or message…"
+            placeholder={t('logs_search_placeholder')}
             className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 w-48"
           />
         </div>
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Since</label>
+          <label className="block text-xs text-gray-500 mb-1">{t('logs_filter_since')}</label>
           <input
             type="date"
             value={since}
@@ -119,7 +152,7 @@ export default function LogsPage() {
           />
         </div>
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Until</label>
+          <label className="block text-xs text-gray-500 mb-1">{t('logs_filter_until')}</label>
           <input
             type="date"
             value={until}
@@ -128,14 +161,16 @@ export default function LogsPage() {
           />
         </div>
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Status</label>
-          <div className="flex gap-1">
+          <label className="block text-xs text-gray-500 mb-1">{t('logs_filter_status')}</label>
+          <div className="flex flex-wrap gap-1">
             {STATUS_OPTIONS.map((s) => (
               <button
                 key={s}
                 onClick={() => { toggleStatus(s); setPage(1); }}
                 className={`px-2 py-1 text-xs rounded ${
-                  statuses.includes(s) ? 'bg-blue-500 text-white' : 'border border-gray-300 hover:bg-gray-50'
+                  statuses.includes(s)
+                    ? 'bg-blue-500 text-white'
+                    : 'border border-gray-300 hover:bg-gray-50'
                 }`}
               >
                 {s}
@@ -143,39 +178,86 @@ export default function LogsPage() {
             ))}
           </div>
         </div>
-        <button onClick={load} className="px-4 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">
-          Refresh
+        <button
+          onClick={load}
+          className="px-4 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+        >
+          {t('logs_refresh')}
         </button>
       </div>
 
+      {/* Batch-style log table */}
       <div className="bg-white rounded-xl shadow overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
-              <th className="px-4 py-3 text-left font-medium text-gray-600">Timestamp</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-600">Filename</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-600">Status</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-600">Message</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-600">User</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-600">{t('logs_col_timestamp')}</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-600">{t('logs_col_filename')}</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-600">{t('logs_col_renamed')}</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-600">{t('logs_col_folder')}</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-600">{t('logs_col_status')}</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-600">{t('logs_col_message')}</th>
+              <th className="px-4 py-3 text-left font-medium text-gray-600">{t('logs_col_user')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {loading && data.items.length === 0 && (
-              <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">Loading…</td></tr>
+              <tr>
+                <td colSpan={7} className="px-4 py-8 text-center text-gray-400">
+                  {t('logs_loading')}
+                </td>
+              </tr>
             )}
             {!loading && data.items.length === 0 && (
-              <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">No logs found</td></tr>
+              <tr>
+                <td colSpan={7} className="px-4 py-8 text-center text-gray-400">
+                  {t('logs_no_results')}
+                </td>
+              </tr>
             )}
             {data.items.map((log) => (
               <tr key={log.id} className="hover:bg-gray-50">
-                <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{formatDate(log.timestamp)}</td>
-                <td className="px-4 py-3 font-mono text-xs text-gray-700 max-w-xs truncate">{log.filename}</td>
+                <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                  {formatDate(log.timestamp)}
+                </td>
+                <td className="px-4 py-3 font-mono text-xs text-gray-700 max-w-xs truncate">
+                  {log.filename || '—'}
+                </td>
+                <td className="px-4 py-3 font-mono text-xs text-blue-700 max-w-xs truncate">
+                  {log.renamed_filename || '—'}
+                </td>
                 <td className="px-4 py-3">
-                  <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${statusBadge(log.status)}`}>
-                    {log.status}
+                  {log.folder_name ? (
+                    <span
+                      className={`px-2 py-0.5 text-xs rounded-full font-medium ${
+                        log.folder_name === 'Error'
+                          ? 'bg-red-100 text-red-800'
+                          : 'bg-green-100 text-green-800'
+                      }`}
+                    >
+                      {log.folder_name}
+                    </span>
+                  ) : (
+                    <span className="text-gray-400">—</span>
+                  )}
+                </td>
+                <td className="px-4 py-3">
+                  <span
+                    className={`px-2 py-0.5 text-xs rounded-full font-medium ${statusBadge(log.status)}`}
+                  >
+                    {log.status === 'processing' ? (
+                      <span className="flex items-center gap-1">
+                        <span className="animate-spin inline-block w-2 h-2 border border-blue-500 border-t-transparent rounded-full" />
+                        {log.status}
+                      </span>
+                    ) : (
+                      log.status
+                    )}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-gray-700 max-w-sm truncate">{log.message || log.error || '—'}</td>
+                <td className="px-4 py-3 text-gray-700 max-w-sm truncate">
+                  {log.message || log.error || '—'}
+                </td>
                 <td className="px-4 py-3 text-gray-600">{log.user_id || '—'}</td>
               </tr>
             ))}
@@ -183,8 +265,9 @@ export default function LogsPage() {
         </table>
       </div>
 
+      {/* Pagination */}
       <div className="mt-4 flex items-center justify-between text-sm text-gray-600">
-        <span>Total: {data.total} logs</span>
+        <span>{t('logs_total')}: {data.total} logs</span>
         <div className="flex gap-2">
           <button
             onClick={() => setPage((p) => Math.max(1, p - 1))}
