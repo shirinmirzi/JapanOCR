@@ -224,7 +224,7 @@ export default function LogsPage() {
                   {log.filename || '—'}
                 </td>
                 <td className="px-4 py-3 font-mono text-xs text-blue-700 max-w-xs truncate">
-                  {log.renamed_filename || <span className="text-gray-400">—</span>}
+                  {log.renamed_filename || '—'}
                 </td>
                 <td className="px-4 py-3">
                   {log.folder_name ? (
