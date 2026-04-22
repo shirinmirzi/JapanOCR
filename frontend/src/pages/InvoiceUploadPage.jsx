@@ -64,11 +64,19 @@ const MONTHLY_FIELD_LABELS = [
 
 function SingleUpload() {
   const [file, setFile] = useState(null);
+  const [fileName, setFileName] = useState(() => localStorage.getItem('single_file_name') || null);
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState(null);
+  const [result, setResult] = useState(() => {
+    try {
+      const stored = localStorage.getItem('single_upload_result');
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  });
   const [error, setError] = useState(null);
-  const [invoiceType, setInvoiceType] = useState('daily');
+  const [invoiceType, setInvoiceType] = useState(() => localStorage.getItem('single_invoice_type') || 'daily');
   const [userDate, setUserDate] = useState('');
   const [dateError, setDateError] = useState(null);
   const inputRef = useRef();
@@ -76,8 +84,11 @@ function SingleUpload() {
   const handleFile = (f) => {
     if (f && f.name.toLowerCase().endsWith('.pdf')) {
       setFile(f);
+      setFileName(f.name);
+      localStorage.setItem('single_file_name', f.name);
       setError(null);
       setResult(null);
+      localStorage.removeItem('single_upload_result');
     } else {
       setError('Only PDF files are supported.');
     }
@@ -111,6 +122,8 @@ function SingleUpload() {
     try {
       const data = await uploadInvoice(file, invoiceType, userDate || null);
       setResult(data);
+      localStorage.setItem('single_upload_result', JSON.stringify(data));
+      localStorage.setItem('single_invoice_type', invoiceType);
     } catch (err) {
       setError(err?.response?.data?.detail || err.message || 'Processing failed');
     } finally {
@@ -120,10 +133,14 @@ function SingleUpload() {
 
   const handleReset = () => {
     setFile(null);
+    setFileName(null);
     setResult(null);
     setError(null);
     setUserDate('');
     setDateError(null);
+    localStorage.removeItem('single_upload_result');
+    localStorage.removeItem('single_file_name');
+    localStorage.removeItem('single_invoice_type');
   };
 
   const fieldLabels = invoiceType === 'daily' ? DAILY_FIELD_LABELS : MONTHLY_FIELD_LABELS;
@@ -162,9 +179,11 @@ function SingleUpload() {
           >
             <div className="text-5xl mb-3">📄</div>
             <p className="text-gray-600">{t('upload_hint')}</p>
-            {file && (
+            {file ? (
               <p className="mt-2 text-sm font-medium text-blue-600">{file.name}</p>
-            )}
+            ) : fileName ? (
+              <p className="mt-2 text-sm text-gray-400">{fileName} — select again to reprocess</p>
+            ) : null}
             <input
               ref={inputRef}
               type="file"
@@ -393,6 +412,7 @@ function BulkUpload() {
     try {
       const data = await bulkUploadInvoices(files, invoiceType, userDate || null);
       localStorage.setItem('bulk_job_id', data.job_id);
+      localStorage.setItem('upload_mode', 'bulk');
       setJobId(data.job_id);
     } catch (err) {
       setError(err?.response?.data?.detail || err.message || 'Upload failed');
@@ -403,6 +423,7 @@ function BulkUpload() {
   const handleReset = () => {
     stopPolling();
     localStorage.removeItem('bulk_job_id');
+    localStorage.removeItem('upload_mode');
     setJobId(null);
     setJob(null);
     setRows([]);
@@ -571,7 +592,18 @@ function BulkUpload() {
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function InvoiceUploadPage() {
-  const [mode, setMode] = useState('single');
+  const [mode, setMode] = useState(() => {
+    const savedMode = localStorage.getItem('upload_mode');
+    // Auto-switch to bulk when a bulk job exists and the user has not
+    // explicitly navigated back to single mode
+    if (localStorage.getItem('bulk_job_id') && savedMode !== 'single') return 'bulk';
+    return savedMode || 'single';
+  });
+
+  const handleModeChange = (newMode) => {
+    setMode(newMode);
+    localStorage.setItem('upload_mode', newMode);
+  };
 
   return (
     <div>
@@ -581,7 +613,7 @@ export default function InvoiceUploadPage() {
       {/* Toggle tabs */}
       <div className="flex gap-1 mb-6 bg-gray-100 rounded-lg p-1 max-w-xs">
         <button
-          onClick={() => setMode('single')}
+          onClick={() => handleModeChange('single')}
           className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors ${
             mode === 'single'
               ? 'bg-white text-gray-900 shadow'
@@ -591,7 +623,7 @@ export default function InvoiceUploadPage() {
           Single
         </button>
         <button
-          onClick={() => setMode('bulk')}
+          onClick={() => handleModeChange('bulk')}
           className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors ${
             mode === 'bulk'
               ? 'bg-white text-gray-900 shadow'
