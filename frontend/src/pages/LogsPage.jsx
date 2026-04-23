@@ -43,6 +43,15 @@ const isIncomplete = (s) => !!s && ['incomplete', 'partial', 'cancelled'].includ
 
 const getDatePrefix = (timestamp) => (timestamp || '').slice(0, 10) || 'unknown';
 
+// Determine the dominant visual status for a group (drives left border color)
+const groupBorderClass = (processing, failed, incomplete, complete) => {
+  if (processing > 0) return 'border-l-4 border-blue-400';
+  if (failed > 0) return 'border-l-4 border-red-400';
+  if (incomplete > 0) return 'border-l-4 border-orange-400';
+  if (complete > 0) return 'border-l-4 border-green-400';
+  return 'border-l-4 border-gray-200';
+};
+
 function groupLogs(items) {
   const groups = {};
   items.forEach((log) => {
@@ -52,6 +61,7 @@ function groupLogs(items) {
     if (!groups[key]) {
       groups[key] = {
         key,
+        isBatch: !!log.execution_folder,
         label: log.execution_folder || getDatePrefix(log.timestamp) || 'Unknown',
         items: [],
         latest: log.timestamp || '',
@@ -62,7 +72,13 @@ function groupLogs(items) {
     if ((log.timestamp || '') > groups[key].latest) groups[key].latest = log.timestamp;
     if (log.user_id) groups[key].userIds.add(log.user_id);
   });
-  return Object.values(groups).sort((a, b) => b.latest.localeCompare(a.latest));
+  // Sort: processing groups first, then by latest timestamp desc
+  return Object.values(groups).sort((a, b) => {
+    const aProcessing = a.items.some((l) => isProcessing(l.status));
+    const bProcessing = b.items.some((l) => isProcessing(l.status));
+    if (aProcessing !== bProcessing) return aProcessing ? -1 : 1;
+    return b.latest.localeCompare(a.latest);
+  });
 }
 
 function exportCSV(items) {
@@ -96,6 +112,21 @@ function exportCSV(items) {
   URL.revokeObjectURL(url);
 }
 
+// Chevron SVG for expand/collapse
+function Chevron({ open }) {
+  return (
+    <svg
+      className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-150 flex-shrink-0 ${open ? 'rotate-90' : ''}`}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2.5}
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+    </svg>
+  );
+}
+
 export default function LogsPage() {
   const [data, setData] = useState({ items: [], total: 0, total_pages: 1 });
   const [page, setPage] = useState(1);
@@ -103,7 +134,6 @@ export default function LogsPage() {
   const [since, setSince] = useState('');
   const [until, setUntil] = useState('');
   const [statuses, setStatuses] = useState([]);
-  const [autoRefresh, setAutoRefresh] = useState(false);
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState(new Set());
 
@@ -131,11 +161,13 @@ export default function LogsPage() {
     load();
   }, [load]);
 
+  // Auto-refresh every 15 s when any processing entries are present
   useEffect(() => {
-    if (!autoRefresh) return;
+    const hasActive = data.items.some((l) => isProcessing(l.status));
+    if (!hasActive) return;
     const id = setInterval(load, 15000);
     return () => clearInterval(id);
-  }, [autoRefresh, load]);
+  }, [data.items, load]);
 
   const toggleStatus = (s) =>
     setStatuses((prev) =>
@@ -154,11 +186,23 @@ export default function LogsPage() {
 
   const groups = useMemo(() => groupLogs(data.items), [data.items]);
 
+  const totalProcessing = data.items.filter((l) => isProcessing(l.status)).length;
+  const totalComplete = data.items.filter((l) => isComplete(l.status)).length;
+  const totalFailed = data.items.filter((l) => isFailed(l.status)).length;
+
   return (
     <div>
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold text-gray-900">{t('logs_title')}</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-bold text-gray-900">{t('logs_title')}</h1>
+          {totalProcessing > 0 && (
+            <span className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
+              <span className="animate-spin inline-block w-2.5 h-2.5 border-2 border-blue-500 border-t-transparent rounded-full" />
+              {totalProcessing} processing
+            </span>
+          )}
+        </div>
         <div className="flex gap-2">
           <button
             onClick={() => exportCSV(data.items)}
@@ -166,17 +210,36 @@ export default function LogsPage() {
           >
             {t('logs_export_csv')}
           </button>
-          <label className="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={autoRefresh}
-              onChange={(e) => setAutoRefresh(e.target.checked)}
-              className="rounded"
-            />
-            {t('logs_auto_refresh')}
-          </label>
+          <button
+            onClick={load}
+            className="px-3 py-1.5 text-xs border border-gray-300 rounded hover:bg-gray-50"
+          >
+            {t('logs_refresh')}
+          </button>
         </div>
       </div>
+
+      {/* Summary bar */}
+      {data.items.length > 0 && (
+        <div className="flex items-center gap-3 mb-3 text-xs text-gray-500">
+          <span>{data.total} {t('logs_total').toLowerCase()}</span>
+          {totalComplete > 0 && (
+            <span className="text-green-700" aria-label={`${totalComplete} complete`}>
+              <span aria-hidden="true">✓</span> {totalComplete} complete
+            </span>
+          )}
+          {totalProcessing > 0 && (
+            <span className="text-blue-700" aria-label={`${totalProcessing} processing`}>
+              <span aria-hidden="true">⟳</span> {totalProcessing} processing
+            </span>
+          )}
+          {totalFailed > 0 && (
+            <span className="text-red-700" aria-label={`${totalFailed} failed`}>
+              <span aria-hidden="true">✗</span> {totalFailed} failed
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Filters */}
       <div className="bg-white rounded-xl shadow p-4 mb-4 flex flex-wrap gap-3 items-end">
@@ -226,12 +289,6 @@ export default function LogsPage() {
             ))}
           </div>
         </div>
-        <button
-          onClick={load}
-          className="px-4 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
-        >
-          {t('logs_refresh')}
-        </button>
       </div>
 
       {/* Grouped expandable list */}
@@ -253,56 +310,59 @@ export default function LogsPage() {
           const processing = group.items.filter((l) => isProcessing(l.status)).length;
           const incomplete = group.items.filter((l) => isIncomplete(l.status)).length;
           const users = [...group.userIds].slice(0, 2).join(', ');
+          const borderClass = groupBorderClass(processing, failed, incomplete, complete);
 
           return (
-            <div key={group.key} className="bg-white rounded-xl shadow overflow-hidden">
+            <div key={group.key} className={`bg-white rounded-xl shadow overflow-hidden ${borderClass}`}>
               {/* Group header */}
               <button
-                className="w-full text-left px-5 py-3.5 flex items-start justify-between hover:bg-gray-50 transition-colors"
+                className="w-full text-left px-4 py-3 flex items-start justify-between hover:bg-gray-50 transition-colors"
                 onClick={() => toggleExpand(group.key)}
               >
                 <div className="flex-1 min-w-0 mr-4">
                   <div className="flex items-center gap-2">
-                    <span
-                      className="text-gray-400 text-xs inline-block transition-transform"
-                      style={{ transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}
-                    >
-                      ▶
-                    </span>
-                    <span className="font-medium text-gray-900 truncate">{group.label}</span>
+                    <Chevron open={isOpen} />
+                    {group.isBatch ? (
+                      <span className="text-gray-400 text-xs" aria-label="batch">📁</span>
+                    ) : (
+                      <span className="text-gray-400 text-xs" aria-label="date">📅</span>
+                    )}
+                    <span className="font-medium text-gray-900 truncate text-sm">{group.label}</span>
+                    {processing > 0 && (
+                      <span className="animate-spin inline-block w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full flex-shrink-0" />
+                    )}
                   </div>
-                  <div className="mt-0.5 ml-5 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                  <div className="mt-1 ml-6 flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
                     <span>{group.items.length} file{group.items.length !== 1 ? 's' : ''}</span>
-                    <span>•</span>
+                    <span className="text-gray-300">•</span>
                     <span>{formatDate(group.latest)}</span>
                     {users && (
                       <>
-                        <span>•</span>
-                        <span className="px-1.5 py-0.5 bg-gray-100 rounded text-gray-600">{users}</span>
+                        <span className="text-gray-300">•</span>
+                        <span className="px-1.5 py-0.5 bg-gray-100 rounded text-gray-600 font-medium">{users}</span>
                       </>
                     )}
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5 flex-shrink-0 mt-0.5">
                   {processing > 0 && (
-                    <span className="px-2 py-0.5 text-xs rounded-full font-medium bg-blue-100 text-blue-800 flex items-center gap-1">
-                      <span className="animate-spin inline-block w-2 h-2 border border-blue-500 border-t-transparent rounded-full" />
-                      {processing}
+                    <span className="px-2 py-0.5 text-xs rounded-full font-medium bg-blue-100 text-blue-800" aria-label={`${processing} processing`}>
+                      <span aria-hidden="true">⟳</span> {processing}
                     </span>
                   )}
                   {complete > 0 && (
-                    <span className="px-2 py-0.5 text-xs rounded-full font-medium bg-green-100 text-green-800">
-                      ✓ {complete}
+                    <span className="px-2 py-0.5 text-xs rounded-full font-medium bg-green-100 text-green-800" aria-label={`${complete} complete`}>
+                      <span aria-hidden="true">✓</span> {complete}
                     </span>
                   )}
                   {incomplete > 0 && (
-                    <span className="px-2 py-0.5 text-xs rounded-full font-medium bg-orange-100 text-orange-800">
+                    <span className="px-2 py-0.5 text-xs rounded-full font-medium bg-orange-100 text-orange-800" aria-label={`${incomplete} incomplete`}>
                       ~ {incomplete}
                     </span>
                   )}
                   {failed > 0 && (
-                    <span className="px-2 py-0.5 text-xs rounded-full font-medium bg-red-100 text-red-800">
-                      ✗ {failed}
+                    <span className="px-2 py-0.5 text-xs rounded-full font-medium bg-red-100 text-red-800" aria-label={`${failed} failed`}>
+                      <span aria-hidden="true">✗</span> {failed}
                     </span>
                   )}
                 </div>
@@ -314,7 +374,7 @@ export default function LogsPage() {
                   {group.items.map((log) => (
                     <div
                       key={log.id}
-                      className="px-5 py-2.5 flex items-start gap-3 border-b border-gray-50 last:border-0 hover:bg-gray-50"
+                      className="px-4 py-2.5 flex items-start gap-3 border-b border-gray-50 last:border-0 hover:bg-gray-50"
                     >
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -335,6 +395,11 @@ export default function LogsPage() {
                             {log.message || log.error}
                           </div>
                         )}
+                        {log.output_path && (
+                          <div className="mt-0.5 text-xs text-gray-400 truncate max-w-sm font-mono">
+                            {log.output_path}
+                          </div>
+                        )}
                         <div className="mt-0.5 text-xs text-gray-400">{formatDate(log.timestamp)}</div>
                       </div>
                       <div className="flex items-center gap-1.5 flex-shrink-0 mt-0.5">
@@ -344,7 +409,7 @@ export default function LogsPage() {
                           </span>
                         )}
                         <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${statusBadge(log.status)}`}>
-                          {log.status === 'processing' ? (
+                          {isProcessing(log.status) ? (
                             <span className="flex items-center gap-1">
                               <span className="animate-spin inline-block w-2 h-2 border border-blue-500 border-t-transparent rounded-full" />
                               {log.status}
