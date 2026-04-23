@@ -18,7 +18,7 @@ from services.file_metadata_client import (
     soft_delete_invoice,
 )
 from services.jobs import create_job, increment_processed, set_job_results, set_job_status
-from services.logging_client import log_invoice_result
+from services.logging_client import log_processing_start, update_log_entry
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/invoices")
@@ -65,6 +65,12 @@ async def _process_single_file(
     if execution_folder is None:
         execution_folder = _build_execution_folder(user_date)
 
+    log_id = log_processing_start(
+        filename,
+        user_id=user_id,
+        execution_folder=execution_folder,
+    )
+
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
         tmp.write(content)
         tmp_path = tmp.name
@@ -106,13 +112,11 @@ async def _process_single_file(
         logger.warning("Failed to upload %s to Azure: %s", dest_name, e)
 
     if ocr_error:
-        log_invoice_result(
-            filename,
+        update_log_entry(
+            log_id,
             "error",
             error=ocr_error,
-            user_id=user_id,
             folder_name=output_folder,
-            execution_folder=execution_folder,
         )
         record = create_invoice(
             job_id=job_id,
@@ -144,14 +148,12 @@ async def _process_single_file(
         upload_folder=f"executions/{execution_folder}/{output_folder}",
         user_id=user_id,
     )
-    log_invoice_result(
-        filename,
+    update_log_entry(
+        log_id,
         "success",
         message="Invoice processed",
-        user_id=user_id,
         renamed_filename=renamed_filename,
         folder_name=output_folder,
-        execution_folder=execution_folder,
     )
     return {
         **invoice_data,
@@ -173,6 +175,12 @@ def _background_bulk_process(job_id: str, files_data: list, user_id: str, invoic
     for item in files_data:
         filename = item["filename"]
         content = item["content"]
+
+        log_id = log_processing_start(
+            filename,
+            user_id=user_id,
+            execution_folder=execution_folder,
+        )
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
             tmp.write(content)
@@ -231,13 +239,11 @@ def _background_bulk_process(job_id: str, files_data: list, user_id: str, invoic
                 "renamed_filename": None,
                 "output_folder": output_folder,
             }
-            log_invoice_result(
-                filename,
+            update_log_entry(
+                log_id,
                 "error",
                 error=ocr_error,
-                user_id=user_id,
                 folder_name=output_folder,
-                execution_folder=execution_folder,
             )
         else:
             create_invoice(
@@ -255,14 +261,12 @@ def _background_bulk_process(job_id: str, files_data: list, user_id: str, invoic
                 "renamed_filename": renamed_filename,
                 "output_folder": output_folder,
             }
-            log_invoice_result(
-                filename,
+            update_log_entry(
+                log_id,
                 "success",
                 message="Bulk invoice processed",
-                user_id=user_id,
                 renamed_filename=renamed_filename,
                 folder_name=output_folder,
-                execution_folder=execution_folder,
             )
 
         increment_processed(job_id)

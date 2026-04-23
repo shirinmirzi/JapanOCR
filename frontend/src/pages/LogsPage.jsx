@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { getLogsPaged } from '../services/api';
 import { t } from '../i18n';
 
@@ -137,8 +137,10 @@ export default function LogsPage() {
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState(new Set());
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (isBackground = false) => {
+    // Only show the full loading indicator on explicit loads (initial load or
+    // manual refresh), not during silent background polling.
+    if (!isBackground) setLoading(true);
     try {
       const params = {
         page,
@@ -157,17 +159,24 @@ export default function LogsPage() {
     }
   }, [page, q, since, until, statuses]);
 
+  // Keep a stable ref to the latest load function so the polling interval
+  // doesn't need to be recreated every time data changes.
+  const loadRef = useRef(load);
+  useEffect(() => { loadRef.current = load; }, [load]);
+
   useEffect(() => {
     load();
   }, [load]);
 
-  // Auto-refresh every 15 s when any processing entries are present
+  // Auto-refresh every 3 s while processing entries are visible; the interval
+  // uses the ref so it always calls the latest load without being torn down on
+  // every data update.
   useEffect(() => {
     const hasActive = data.items.some((l) => isProcessing(l.status));
     if (!hasActive) return;
-    const id = setInterval(load, 15000);
+    const id = setInterval(() => loadRef.current(true), 3000);
     return () => clearInterval(id);
-  }, [data.items, load]);
+  }, [data.items]);
 
   const toggleStatus = (s) =>
     setStatuses((prev) =>

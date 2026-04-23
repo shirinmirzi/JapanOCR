@@ -47,6 +47,84 @@ def log_invoice_result(
 log_ocr_result = log_invoice_result
 
 
+def log_processing_start(
+    filename: str,
+    user_id: str = None,
+    execution_folder: str = None,
+    folder_name: str = None,
+) -> int | None:
+    """Insert a 'processing' log entry and return its id for later update."""
+    merged_metadata = {}
+    if folder_name is not None:
+        merged_metadata["folder_name"] = folder_name
+    if execution_folder is not None:
+        merged_metadata["execution_folder"] = execution_folder
+    try:
+        row = execute_write(
+            """
+            INSERT INTO logs (filename, status, metadata, user_id)
+            VALUES (%s, %s, %s::jsonb, %s)
+            RETURNING id
+            """,
+            (
+                filename,
+                "processing",
+                json.dumps(merged_metadata) if merged_metadata else None,
+                user_id,
+            ),
+        )
+        if row:
+            return row["id"]
+    except Exception as e:
+        logger.warning("Failed to write processing log entry: %s", e)
+    return None
+
+
+def update_log_entry(
+    log_id: int,
+    status: str,
+    message: str = None,
+    error: str = None,
+    renamed_filename: str = None,
+    folder_name: str = None,
+):
+    """Update an existing log entry's status and metadata in place."""
+    if log_id is None:
+        return
+    try:
+        rows = execute_query("SELECT metadata FROM logs WHERE id = %s", (log_id,))
+        existing_meta = {}
+        if rows:
+            meta = rows[0].get("metadata") or {}
+            if isinstance(meta, str):
+                try:
+                    existing_meta = json.loads(meta)
+                except Exception:
+                    existing_meta = {}
+            elif isinstance(meta, dict):
+                existing_meta = dict(meta)
+        if renamed_filename is not None:
+            existing_meta["renamed_filename"] = renamed_filename
+        if folder_name is not None:
+            existing_meta["folder_name"] = folder_name
+        execute_write(
+            """
+            UPDATE logs SET status = %s, message = %s, error = %s,
+                metadata = %s::jsonb
+            WHERE id = %s
+            """,
+            (
+                status,
+                message,
+                error,
+                json.dumps(existing_meta) if existing_meta else None,
+                log_id,
+            ),
+        )
+    except Exception as e:
+        logger.warning("Failed to update log entry %s: %s", log_id, e)
+
+
 def get_logs_paged(
     page: int = 1,
     page_size: int = 20,
