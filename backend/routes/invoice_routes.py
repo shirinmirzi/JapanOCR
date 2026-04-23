@@ -71,51 +71,82 @@ async def _process_single_file(
         execution_folder=execution_folder,
     )
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-        tmp.write(content)
-        tmp_path = tmp.name
-
-    invoice_data = {}
-    ocr_error = None
     try:
-        with open(tmp_path, "rb") as f:
-            raw_response = analyze_document(f, filename, invoice_type=invoice_type)
-        invoice_data = extract_invoice_data(raw_response, invoice_type=invoice_type)
-    except Exception as e:
-        logger.error("OCR failed for %s: %s", filename, e)
-        ocr_error = str(e)
-    finally:
-        with contextlib.suppress(Exception):
-            os.unlink(tmp_path)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
 
-    # Determine output subfolder and renamed filename (daily only)
-    renamed_filename = None
-    output_folder = "ProcessedFiles"
-    if invoice_type == "daily":
-        customer_code = invoice_data.get("customer_code", "N/A")
-        invoice_number = invoice_data.get("invoice_number", "N/A")
-        invoice_date = invoice_data.get("invoice_date", "N/A")
-        if ocr_error or customer_code == "N/A" or invoice_number == "N/A":
-            output_folder = "Error"
-        else:
-            renamed_filename = _build_renamed_filename(
-                customer_code, invoice_number, invoice_date, user_date
+        invoice_data = {}
+        ocr_error = None
+        try:
+            with open(tmp_path, "rb") as f:
+                raw_response = analyze_document(f, filename, invoice_type=invoice_type)
+            invoice_data = extract_invoice_data(raw_response, invoice_type=invoice_type)
+        except Exception as e:
+            logger.error("OCR failed for %s: %s", filename, e)
+            ocr_error = str(e)
+        finally:
+            with contextlib.suppress(Exception):
+                os.unlink(tmp_path)
+
+        # Determine output subfolder and renamed filename (daily only)
+        renamed_filename = None
+        output_folder = "ProcessedFiles"
+        if invoice_type == "daily":
+            customer_code = invoice_data.get("customer_code", "N/A")
+            invoice_number = invoice_data.get("invoice_number", "N/A")
+            invoice_date = invoice_data.get("invoice_date", "N/A")
+            if ocr_error or customer_code == "N/A" or invoice_number == "N/A":
+                output_folder = "Error"
+            else:
+                renamed_filename = _build_renamed_filename(
+                    customer_code, invoice_number, invoice_date, user_date
+                )
+
+        dest_name = renamed_filename if renamed_filename else filename
+        blob_path = f"executions/{execution_folder}/{output_folder}/{dest_name}"
+
+        blob_url = None
+        try:
+            blob_url = azure_storage_client.upload_file(content, blob_path)
+        except Exception as e:
+            logger.warning("Failed to upload %s to Azure: %s", dest_name, e)
+
+        if ocr_error:
+            update_log_entry(
+                log_id,
+                "error",
+                error=ocr_error,
+                folder_name=output_folder,
             )
+            record = create_invoice(
+                job_id=job_id,
+                filename=filename,
+                invoice_data=invoice_data,
+                blob_url=blob_url,
+                blob_path=blob_path,
+                upload_folder=f"executions/{execution_folder}/{output_folder}",
+                user_id=user_id,
+            )
+            return {
+                **invoice_data,
+                "id": record.get("id"),
+                "blob_url": blob_url,
+                "filename": filename,
+                "renamed_filename": None,
+                "output_folder": output_folder,
+                "execution_folder": execution_folder,
+                "blob_path": blob_path,
+                "error": ocr_error,
+            }
 
-    dest_name = renamed_filename if renamed_filename else filename
-    blob_path = f"executions/{execution_folder}/{output_folder}/{dest_name}"
-
-    blob_url = None
-    try:
-        blob_url = azure_storage_client.upload_file(content, blob_path)
-    except Exception as e:
-        logger.warning("Failed to upload %s to Azure: %s", dest_name, e)
-
-    if ocr_error:
+        # Update log to success BEFORE creating the invoice record so the log
+        # always reaches a terminal state even if create_invoice raises.
         update_log_entry(
             log_id,
-            "error",
-            error=ocr_error,
+            "success",
+            message="Invoice processed",
+            renamed_filename=renamed_filename,
             folder_name=output_folder,
         )
         record = create_invoice(
@@ -132,39 +163,16 @@ async def _process_single_file(
             "id": record.get("id"),
             "blob_url": blob_url,
             "filename": filename,
-            "renamed_filename": None,
+            "renamed_filename": renamed_filename,
             "output_folder": output_folder,
             "execution_folder": execution_folder,
             "blob_path": blob_path,
-            "error": ocr_error,
         }
-
-    record = create_invoice(
-        job_id=job_id,
-        filename=filename,
-        invoice_data=invoice_data,
-        blob_url=blob_url,
-        blob_path=blob_path,
-        upload_folder=f"executions/{execution_folder}/{output_folder}",
-        user_id=user_id,
-    )
-    update_log_entry(
-        log_id,
-        "success",
-        message="Invoice processed",
-        renamed_filename=renamed_filename,
-        folder_name=output_folder,
-    )
-    return {
-        **invoice_data,
-        "id": record.get("id"),
-        "blob_url": blob_url,
-        "filename": filename,
-        "renamed_filename": renamed_filename,
-        "output_folder": output_folder,
-        "execution_folder": execution_folder,
-        "blob_path": blob_path,
-    }
+    except Exception as e:
+        # Ensure the log always reaches a terminal state even when an
+        # unexpected exception escapes the normal success/error paths above.
+        update_log_entry(log_id, "error", error=f"Processing failed: {e}")
+        raise
 
 
 def _background_bulk_process(job_id: str, files_data: list, user_id: str, invoice_type: str = "daily", execution_folder: str = None):
