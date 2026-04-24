@@ -279,106 +279,98 @@ export default function LogsPage() {
 
   return (
     <div>
-      {/* Header */}
-      <div className="flex items-start justify-between mb-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-gray-900">{t(`logs_module_${module}`)}</h1>
-            {loading && (
-              <span className="animate-spin inline-block w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full" aria-label="loading" />
-            )}
-            {totalProcessing > 0 && (
-              <span className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
-                <span className="animate-spin inline-block w-2.5 h-2.5 border-2 border-blue-500 border-t-transparent rounded-full" />
-                {totalProcessing} processing
-              </span>
-            )}
-          </div>
+      {/* Page header */}
+      <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-bold text-gray-900">{t(`logs_module_${module}`)}</h1>
+          {loading && (
+            <span className="animate-spin inline-block w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full" aria-label="loading" />
+          )}
+          {totalProcessing > 0 && (
+            <span className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
+              <span className="animate-spin inline-block w-2.5 h-2.5 border-2 border-blue-500 border-t-transparent rounded-full" />
+              {totalProcessing} processing
+            </span>
+          )}
         </div>
-        <div className="flex gap-2 mt-1">
+        <div className="flex items-center gap-2">
+          {data.items.length > 0 && (
+            <div className="hidden sm:flex items-center gap-3 mr-3 text-xs text-gray-400">
+              <span className="font-medium text-gray-600">{data.total} total</span>
+              {totalComplete > 0 && (
+                <span className="text-green-700">✓ {totalComplete}</span>
+              )}
+              {totalProcessing > 0 && (
+                <span className="text-blue-700">⟳ {totalProcessing}</span>
+              )}
+              {totalFailed > 0 && (
+                <span className="text-red-700">✗ {totalFailed}</span>
+              )}
+            </div>
+          )}
           <button
             onClick={() => exportCSV(data.items)}
-            className="px-3 py-1.5 text-xs border border-gray-300 rounded hover:bg-gray-50"
+            className="px-3 py-1.5 text-xs border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-600 transition-colors"
           >
             {t('logs_export_csv')}
           </button>
           <button
             onClick={load}
-            className="px-3 py-1.5 text-xs border border-gray-300 rounded hover:bg-gray-50"
+            className="px-3 py-1.5 text-xs bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700 font-medium transition-colors"
           >
             {t('logs_refresh')}
           </button>
         </div>
       </div>
 
-      {/* Summary bar */}
-      {data.items.length > 0 && (
-        <div className="flex items-center gap-3 mb-3 text-xs text-gray-500">
-          <span>{data.total} {t('logs_total').toLowerCase()}</span>
-          {totalComplete > 0 && (
-            <span className="text-green-700" aria-label={`${totalComplete} complete`}>
-              <span aria-hidden="true">✓</span> {totalComplete} complete
-            </span>
-          )}
-          {totalProcessing > 0 && (
-            <span className="text-blue-700" aria-label={`${totalProcessing} processing`}>
-              <span aria-hidden="true">⟳</span> {totalProcessing} processing
-            </span>
-          )}
-          {totalFailed > 0 && (
-            <span className="text-red-700" aria-label={`${totalFailed} failed`}>
-              <span aria-hidden="true">✗</span> {totalFailed} failed
-            </span>
-          )}
-        </div>
-      )}
-
       {/* Filters */}
-      <div className="bg-white rounded-xl shadow p-4 mb-4 flex flex-wrap gap-3 items-end">
-        <div>
-          <label className="block text-xs text-gray-500 mb-1">Search</label>
-          <input
-            type="text"
-            value={qInput}
-            onChange={(e) => setQInput(e.target.value)}
-            placeholder={t('logs_search_placeholder')}
-            className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 w-48"
-          />
-        </div>
-        <div>
-          <label className="block text-xs text-gray-500 mb-1">{t('logs_filter_since')}</label>
-          <input
-            type="date"
-            value={since}
-            onChange={(e) => { setSince(e.target.value); setPage(1); }}
-            className="text-sm border border-gray-300 rounded-lg px-3 py-1.5"
-          />
-        </div>
-        <div>
-          <label className="block text-xs text-gray-500 mb-1">{t('logs_filter_until')}</label>
-          <input
-            type="date"
-            value={until}
-            onChange={(e) => { setUntil(e.target.value); setPage(1); }}
-            className="text-sm border border-gray-300 rounded-lg px-3 py-1.5"
-          />
-        </div>
-        <div>
-          <label className="block text-xs text-gray-500 mb-1">{t('logs_filter_status')}</label>
-          <div className="flex flex-wrap gap-1">
-            {STATUS_OPTIONS.map((s) => (
-              <button
-                key={s}
-                onClick={() => { toggleStatus(s); setPage(1); }}
-                className={`px-2 py-0.5 text-xs rounded-full font-medium transition-colors ${
-                  statuses.includes(s)
-                    ? 'bg-blue-500 text-white'
-                    : 'border border-gray-300 text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                {STATUS_CHIP_LABELS[s] || s}
-              </button>
-            ))}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4">
+        <div className="flex flex-wrap gap-3 items-end">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Search</label>
+            <input
+              type="text"
+              value={qInput}
+              onChange={(e) => setQInput(e.target.value)}
+              placeholder={t('logs_search_placeholder')}
+              className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 w-48 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">{t('logs_filter_since')}</label>
+            <input
+              type="date"
+              value={since}
+              onChange={(e) => { setSince(e.target.value); setPage(1); }}
+              className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">{t('logs_filter_until')}</label>
+            <input
+              type="date"
+              value={until}
+              onChange={(e) => { setUntil(e.target.value); setPage(1); }}
+              className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400"
+            />
+          </div>
+          <div className="flex-1 min-w-0">
+            <label className="block text-xs font-medium text-gray-500 mb-1">{t('logs_filter_status')}</label>
+            <div className="flex flex-wrap gap-1">
+              {STATUS_OPTIONS.map((s) => (
+                <button
+                  key={s}
+                  onClick={() => { toggleStatus(s); setPage(1); }}
+                  className={`px-2 py-0.5 text-xs rounded-full font-medium transition-colors ${
+                    statuses.includes(s)
+                      ? 'bg-blue-500 text-white'
+                      : 'border border-gray-200 text-gray-500 hover:bg-gray-100'
+                  }`}
+                >
+                  {STATUS_CHIP_LABELS[s] || s}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -387,14 +379,15 @@ export default function LogsPage() {
       <div className="space-y-2">
         {/* Show a subtle loading placeholder only on the very first fetch */}
         {!initialLoadDone && loading && (
-          <div className="bg-white rounded-xl shadow px-6 py-8 text-center text-gray-400 flex items-center justify-center gap-2">
+          <div className="bg-white rounded-xl border border-gray-200 px-6 py-8 text-center text-gray-400 flex items-center justify-center gap-2">
             <span className="animate-spin inline-block w-4 h-4 border-2 border-gray-300 border-t-gray-500 rounded-full" />
             {t('logs_loading')}
           </div>
         )}
         {initialLoadDone && data.items.length === 0 && (
-          <div className="bg-white rounded-xl shadow px-6 py-10 text-center text-gray-400">
-            {t('logs_no_results')}
+          <div className="bg-white rounded-xl border border-gray-200 px-6 py-12 text-center">
+            <div className="text-3xl mb-2">🗂</div>
+            <p className="text-gray-400 text-sm">{t('logs_no_results')}</p>
           </div>
         )}
         {groups.map((group) => {
@@ -407,7 +400,7 @@ export default function LogsPage() {
           const borderClass = groupBorderClass(processing, failed, incomplete, complete);
 
           return (
-            <div key={group.key} className={`bg-white rounded-xl shadow overflow-hidden ${borderClass}`}>
+            <div key={group.key} className={`bg-white rounded-xl border border-gray-200 overflow-hidden ${borderClass}`}>
               {/* Group header */}
               <button
                 className="w-full text-left px-4 py-3 flex items-start justify-between hover:bg-gray-50 transition-colors"
@@ -426,14 +419,14 @@ export default function LogsPage() {
                       <span className="animate-spin inline-block w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full flex-shrink-0" />
                     )}
                   </div>
-                  <div className="mt-1 ml-6 flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
+                  <div className="mt-1 ml-6 flex flex-wrap items-center gap-1.5 text-xs text-gray-400">
                     <span>{group.items.length} file{group.items.length !== 1 ? 's' : ''}</span>
-                    <span className="text-gray-300">•</span>
+                    <span className="text-gray-200">•</span>
                     <span>{formatDate(group.latest)}</span>
                     {users && (
                       <>
-                        <span className="text-gray-300">•</span>
-                        <span className="px-1.5 py-0.5 bg-gray-100 rounded text-gray-600 font-medium">{users}</span>
+                        <span className="text-gray-200">•</span>
+                        <span className="px-1.5 py-0.5 bg-gray-100 rounded text-gray-500 font-medium">{users}</span>
                       </>
                     )}
                   </div>
@@ -477,8 +470,8 @@ export default function LogsPage() {
                           </span>
                           {log.renamed_filename && log.renamed_filename !== log.filename && (
                             <>
-                              <span className="text-gray-400 text-xs">→</span>
-                              <span className="font-mono text-xs text-blue-700 truncate max-w-xs">
+                              <span className="text-gray-300 text-xs">→</span>
+                              <span className="font-mono text-xs text-blue-600 truncate max-w-xs">
                                 {log.renamed_filename}
                               </span>
                             </>
@@ -523,21 +516,25 @@ export default function LogsPage() {
       </div>
 
       {/* Pagination */}
-      <div className="mt-4 flex items-center justify-between text-sm text-gray-600">
-        <span>{t('logs_total')}: {data.total} logs</span>
-        <div className="flex gap-2">
+      <div className="mt-5 flex items-center justify-between">
+        <span className="text-sm text-gray-500">
+          {t('logs_total')}: <span className="font-medium text-gray-700">{data.total}</span>
+        </span>
+        <div className="flex items-center gap-1">
           <button
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page === 1}
-            className="px-3 py-1.5 border border-gray-300 rounded disabled:opacity-40 hover:bg-gray-50"
+            className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg disabled:opacity-40 hover:bg-gray-50 transition-colors"
           >
             ← Prev
           </button>
-          <span className="px-3 py-1.5">Page {page} / {data.total_pages}</span>
+          <span className="px-3 py-1.5 text-sm text-gray-600">
+            {page} / {data.total_pages}
+          </span>
           <button
             onClick={() => setPage((p) => Math.min(data.total_pages, p + 1))}
             disabled={page === data.total_pages}
-            className="px-3 py-1.5 border border-gray-300 rounded disabled:opacity-40 hover:bg-gray-50"
+            className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg disabled:opacity-40 hover:bg-gray-50 transition-colors"
           >
             Next →
           </button>

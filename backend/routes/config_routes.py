@@ -3,6 +3,7 @@ import io
 import logging
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from psycopg2 import sql
 
 from config.database import get_db_connection
 from middleware.entra_auth import get_current_user
@@ -144,16 +145,14 @@ async def upload_master_data(
     valid_rows, invalid_rows = _validate_rows(rows)
 
     table = _MASTER_TABLE[master_type]
-    # Explicit allowlist check: table must be one of the two known names.
-    # This is guaranteed by _VALID_MASTER_TYPES + _MASTER_TABLE, but we
-    # assert it here so static-analysis tools can confirm there is no
-    # user-controlled SQL construction.
-    assert table in ("daily_invoice_master", "monthly_invoice_master")
+    # table is sourced from the _MASTER_TABLE whitelist — never from user input.
+    # We use psycopg2.sql.Identifier to compose SQL safely.
+    table_ident = sql.Identifier(table)
 
     with get_db_connection() as conn:
         with conn.cursor() as cur:
             # Replace existing master data for this type
-            cur.execute(f"TRUNCATE TABLE {table} RESTART IDENTITY")
+            cur.execute(sql.SQL("TRUNCATE TABLE {} RESTART IDENTITY").format(table_ident))
 
             if valid_rows:
                 values = [
@@ -162,8 +161,10 @@ async def upload_master_data(
                 ]
                 # Use executemany for bulk insert; psycopg2 batches this efficiently
                 cur.executemany(
-                    f"INSERT INTO {table} (customer_cd, destination_cd, row_number) "
-                    "VALUES (%s, %s, %s)",
+                    sql.SQL(
+                        "INSERT INTO {} (customer_cd, destination_cd, row_number) "
+                        "VALUES (%s, %s, %s)"
+                    ).format(table_ident),
                     values,
                 )
 
@@ -197,13 +198,14 @@ async def get_master_data(
             detail=f"master_type must be one of: {', '.join(sorted(_VALID_MASTER_TYPES))}",
         )
     table = _MASTER_TABLE[master_type]
-    # Explicit allowlist check — same guarantee as in the upload endpoint.
-    assert table in ("daily_invoice_master", "monthly_invoice_master")
+    table_ident = sql.Identifier(table)
     with get_db_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"SELECT id, customer_cd, destination_cd, row_number, created_at "
-                f"FROM {table} ORDER BY row_number ASC NULLS LAST, id ASC"
+                sql.SQL(
+                    "SELECT id, customer_cd, destination_cd, row_number, created_at "
+                    "FROM {} ORDER BY row_number ASC NULLS LAST, id ASC"
+                ).format(table_ident)
             )
             rows = cur.fetchall()
     return {"master_type": master_type, "count": len(rows), "rows": [dict(r) for r in rows]}

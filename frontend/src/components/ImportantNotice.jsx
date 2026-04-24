@@ -7,19 +7,23 @@ export default function ImportantNotice() {
   if (!open) return null;
 
   return (
-    <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-4 mb-6 flex items-start gap-3">
-      <span className="text-yellow-500 text-xl">⚠️</span>
+    <div className="flex items-start gap-3 p-4 mb-5 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+      <svg className="w-4 h-4 mt-0.5 flex-shrink-0 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+      </svg>
       <div className="flex-1">
-        <p className="font-semibold text-yellow-800">{t('notice_processing_title')}</p>
-        <p className="text-sm text-yellow-700 mt-1">{t('notice_processing_text')}</p>
+        <p className="font-semibold text-amber-900">{t('notice_processing_title')}</p>
+        <p className="text-xs text-amber-700 mt-0.5">{t('notice_processing_text')}</p>
       </div>
       <button
         type="button"
         aria-label="Dismiss notice"
         onClick={() => setOpen(false)}
-        className="text-yellow-600 hover:text-yellow-800 text-lg leading-none"
+        className="text-amber-500 hover:text-amber-700 transition-colors"
       >
-        ×
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
       </button>
     </div>
   );

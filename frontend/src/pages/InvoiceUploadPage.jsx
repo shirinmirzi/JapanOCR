@@ -148,11 +148,11 @@ function SingleUpload() {
   return (
     <div>
       {!result ? (
-        <div className="bg-white rounded-xl shadow p-6 w-full">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 w-full">
           <InvoiceTypeToggle value={invoiceType} onChange={setInvoiceType} />
 
-          <div className="mb-4">
-            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
+          <div className="mb-5">
+            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
               処理日付 (Processing Date)
             </label>
             <input
@@ -161,7 +161,7 @@ function SingleUpload() {
               onChange={handleDateChange}
               placeholder="YYYYMMDD e.g. 20250430"
               maxLength={8}
-              className="w-full sm:w-64 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="w-full sm:w-64 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400"
             />
             {dateError && (
               <p className="mt-1 text-xs text-red-600">{dateError}</p>
@@ -169,20 +169,20 @@ function SingleUpload() {
           </div>
 
           <div
-            className={`border-2 border-dashed rounded-xl p-6 sm:p-10 text-center cursor-pointer transition-colors ${
-              dragging ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-blue-400'
+            className={`border-2 border-dashed rounded-xl p-8 sm:p-12 text-center cursor-pointer transition-colors ${
+              dragging ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
             }`}
             onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
             onDragLeave={() => setDragging(false)}
             onDrop={handleDrop}
             onClick={() => inputRef.current?.click()}
           >
-            <div className="text-5xl mb-3">📄</div>
-            <p className="text-gray-600">{t('upload_hint')}</p>
+            <div className="text-4xl mb-3">📄</div>
+            <p className="text-gray-500 text-sm">{t('upload_hint')}</p>
             {file ? (
               <p className="mt-2 text-sm font-medium text-blue-600">{file.name}</p>
             ) : fileName ? (
-              <p className="mt-2 text-sm text-gray-400">{fileName} — select again to reprocess</p>
+              <p className="mt-2 text-xs text-gray-400">{fileName} — select again to reprocess</p>
             ) : null}
             <input
               ref={inputRef}
@@ -194,15 +194,16 @@ function SingleUpload() {
           </div>
 
           {error && (
-            <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+            <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-start gap-2">
+              <span className="text-red-400 mt-0.5">⚠</span>
               {error}
             </div>
           )}
 
-          <div className="mt-4 flex gap-3">
+          <div className="mt-5 flex gap-3">
             <button
               onClick={() => inputRef.current?.click()}
-              className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50"
+              className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors"
             >
               {t('upload_choose')}
             </button>
@@ -218,16 +219,16 @@ function SingleUpload() {
         </div>
       ) : (
         <div className="w-full">
-          <div className="bg-white rounded-xl shadow p-6 mb-4">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-gray-900">Invoice Data Extracted</h2>
-              <span className={`px-2 py-1 text-xs rounded-full font-medium ${result.output_folder === 'Error' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
+              <span className={`px-2.5 py-1 text-xs rounded-full font-medium ${result.output_folder === 'Error' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
                 {result.output_folder === 'Error' ? '✗ Error' : '✓ Processed'}
               </span>
             </div>
 
             {invoiceType === 'daily' && (
-              <div className="mb-4 p-4 bg-gray-50 rounded-lg space-y-2">
+              <div className="mb-5 p-4 bg-gray-50 rounded-lg space-y-2 border border-gray-100">
                 {result.renamed_filename && (
                   <p className="text-sm">
                     <span className="font-medium">✅ Renamed filename:</span>{' '}
@@ -257,7 +258,7 @@ function SingleUpload() {
             <div className="grid grid-cols-2 gap-4">
               {fieldLabels.map(([key, label]) => (
                 <div key={key} className={key.includes('address') ? 'col-span-2' : ''}>
-                  <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">{t(label)}</p>
+                  <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">{t(label)}</p>
                   <p className="text-sm font-medium text-gray-900">{result[key] || '—'}</p>
                 </div>
               ))}
@@ -265,15 +266,15 @@ function SingleUpload() {
           </div>
 
           {result.line_items && result.line_items.length > 0 && (
-            <div className="bg-white rounded-xl shadow p-6 mb-4">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4">
               <h3 className="font-semibold text-gray-900 mb-3">{t('line_items')}</h3>
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left border-b border-gray-200">
-                    <th className="pb-2 font-medium text-gray-600">Description</th>
-                    <th className="pb-2 font-medium text-gray-600">Qty</th>
-                    <th className="pb-2 font-medium text-gray-600">Unit Price</th>
-                    <th className="pb-2 font-medium text-gray-600">Total</th>
+                    <th className="pb-2 font-medium text-gray-500 text-xs uppercase">Description</th>
+                    <th className="pb-2 font-medium text-gray-500 text-xs uppercase">Qty</th>
+                    <th className="pb-2 font-medium text-gray-500 text-xs uppercase">Unit Price</th>
+                    <th className="pb-2 font-medium text-gray-500 text-xs uppercase">Total</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -292,7 +293,7 @@ function SingleUpload() {
 
           <button
             onClick={handleReset}
-            className="px-6 py-2 rounded-lg text-white text-sm font-medium"
+            className="px-6 py-2 rounded-lg text-white text-sm font-medium transition-opacity hover:opacity-90"
             style={{ backgroundColor: '#002F45' }}
           >
             Upload Another
@@ -441,12 +442,12 @@ function BulkUpload() {
   return (
     <div>
       {!jobId ? (
-        <div className="bg-white rounded-xl shadow p-6 w-full">
-          <p className="text-gray-600 mb-4">{t('bulk_hint')}</p>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 w-full">
+          <p className="text-sm text-gray-500 mb-5">{t('bulk_hint')}</p>
           <InvoiceTypeToggle value={invoiceType} onChange={setInvoiceType} />
 
-          <div className="mb-4">
-            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
+          <div className="mb-5">
+            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
               処理日付 (Processing Date)
             </label>
             <input
@@ -455,14 +456,14 @@ function BulkUpload() {
               onChange={handleDateChange}
               placeholder="YYYYMMDD e.g. 20250430"
               maxLength={8}
-              className="w-full sm:w-64 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="w-full sm:w-64 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400"
             />
             {dateError && (
               <p className="mt-1 text-xs text-red-600">{dateError}</p>
             )}
           </div>
 
-          <div className="flex gap-3 items-center">
+          <div className="flex gap-3 items-center flex-wrap">
             <input
               ref={inputRef}
               type="file"
@@ -473,24 +474,25 @@ function BulkUpload() {
             />
             <button
               onClick={() => inputRef.current?.click()}
-              className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50"
+              className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors"
             >
               {t('bulk_choose')}
             </button>
             {files.length > 0 && (
-              <span className="text-sm text-gray-600">{files.length} file(s) selected</span>
+              <span className="text-sm text-gray-600 font-medium">{files.length} file(s) selected</span>
             )}
             <button
               onClick={handleStart}
               disabled={!files.length || running || !!dateError}
-              className="px-6 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-50"
+              className="px-6 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-40 transition-opacity hover:opacity-90"
               style={{ backgroundColor: '#009DD0' }}
             >
               {running ? t('bulk_running') : t('bulk_run')}
             </button>
           </div>
           {error && (
-            <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+            <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-start gap-2">
+              <span className="text-red-400 mt-0.5">⚠</span>
               {error}
             </div>
           )}
@@ -498,53 +500,53 @@ function BulkUpload() {
       ) : (
         <div>
           {job && (
-            <div className="bg-white rounded-xl shadow p-4 mb-4 flex items-center justify-between">
-              <div>
-                <span className="text-sm text-gray-500">Job: </span>
-                <span className="font-mono text-sm">{jobId.slice(0, 8)}…</span>
-                <span
-                  className={`ml-3 px-2 py-0.5 text-xs rounded-full font-medium ${statusBadge(job.status)}`}
-                >
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4 flex flex-wrap items-center gap-4 justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-gray-400">Job</span>
+                <span className="font-mono text-sm font-medium text-gray-900">{jobId.slice(0, 8)}…</span>
+                <span className={`px-2.5 py-0.5 text-xs rounded-full font-medium ${statusBadge(job.status)}`}>
                   {job.status}
                 </span>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-32 bg-gray-200 rounded-full h-2">
-                  <div
-                    className="h-2 rounded-full bg-blue-500 transition-all"
-                    style={{ width: `${progress}%` }}
-                  />
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-32 bg-gray-100 rounded-full h-1.5">
+                    <div
+                      className="h-1.5 rounded-full bg-blue-500 transition-all"
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
+                  <span className="text-sm text-gray-600 font-medium">
+                    {job.processed_count}/{job.total_count}
+                  </span>
                 </div>
-                <span className="text-sm text-gray-600">
-                  {job.processed_count}/{job.total_count}
-                </span>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => navigate('/logs')}
-                  className="px-3 py-1.5 text-xs border border-gray-300 rounded hover:bg-gray-50"
-                >
-                  {t('bulk_view_logs')}
-                </button>
-                <button
-                  onClick={handleReset}
-                  className="px-3 py-1.5 text-xs border border-gray-300 rounded hover:bg-gray-50"
-                >
-                  {t('bulk_reset')}
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => navigate('/logs')}
+                    className="px-3 py-1.5 text-xs border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    {t('bulk_view_logs')}
+                  </button>
+                  <button
+                    onClick={handleReset}
+                    className="px-3 py-1.5 text-xs border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    {t('bulk_reset')}
+                  </button>
+                </div>
               </div>
             </div>
           )}
 
-          <div className="bg-white rounded-xl shadow overflow-hidden">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">{t('bulk_col_file')}</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">{t('bulk_col_status')}</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">{t('bulk_col_invoice_num')}</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Renamed Filename</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600">Output Folder</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">{t('bulk_col_file')}</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">{t('bulk_col_status')}</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">{t('bulk_col_invoice_num')}</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Renamed Filename</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Output Folder</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -562,7 +564,7 @@ function BulkUpload() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-gray-700">{row.invoice_number}</td>
-                    <td className="px-4 py-3 font-mono text-xs text-blue-700 max-w-xs truncate">{row.renamed_filename}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-blue-600 max-w-xs truncate">{row.renamed_filename}</td>
                     <td className="px-4 py-3">
                       {row.output_folder !== '—' && (
                         <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${row.output_folder === 'Error' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
@@ -575,7 +577,7 @@ function BulkUpload() {
                 ))}
                 {rows.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-gray-400">
+                    <td colSpan={5} className="px-4 py-10 text-center text-gray-400 text-sm">
                       Waiting for files…
                     </td>
                   </tr>
@@ -607,16 +609,19 @@ export default function InvoiceUploadPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-4">{t('upload_title')}</h1>
+      <div className="mb-5">
+        <h1 className="text-2xl font-bold text-gray-900">{t('upload_title')}</h1>
+        <p className="mt-1 text-sm text-gray-500">Process individual or batched PDF invoices through OCR extraction.</p>
+      </div>
       <ImportantNotice />
 
-      {/* Toggle tabs */}
+      {/* Mode toggle */}
       <div className="flex gap-1 mb-6 bg-gray-100 rounded-lg p-1 max-w-xs">
         <button
           onClick={() => handleModeChange('single')}
           className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors ${
             mode === 'single'
-              ? 'bg-white text-gray-900 shadow'
+              ? 'bg-white text-gray-900 shadow-sm'
               : 'text-gray-500 hover:text-gray-700'
           }`}
         >
@@ -626,7 +631,7 @@ export default function InvoiceUploadPage() {
           onClick={() => handleModeChange('bulk')}
           className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors ${
             mode === 'bulk'
-              ? 'bg-white text-gray-900 shadow'
+              ? 'bg-white text-gray-900 shadow-sm'
               : 'text-gray-500 hover:text-gray-700'
           }`}
         >

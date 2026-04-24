@@ -64,25 +64,25 @@ export default function ConfigPage() {
 
   return (
     <div className="max-w-2xl mx-auto py-8 px-4">
-      <h1 className="text-2xl font-bold text-gray-800 mb-2">{t('config_title')}</h1>
+      <h1 className="text-2xl font-bold text-gray-800 mb-1">{t('config_title')}</h1>
       <p className="text-sm text-gray-500 mb-6">{t('config_hint')}</p>
 
-      <form onSubmit={handleSubmit} className="space-y-6 bg-white rounded-xl shadow p-6 border border-gray-200">
+      <form onSubmit={handleSubmit} className="space-y-5 bg-white rounded-xl border border-gray-200 p-6">
         {/* Master type selector */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
             {t('config_master_type')}
           </label>
-          <div className="flex gap-3">
+          <div className="inline-flex rounded-lg border border-gray-200 p-0.5 bg-gray-50 gap-1">
             {MASTER_TYPES.map((mt) => (
               <button
                 key={mt.value}
                 type="button"
                 onClick={() => { setMasterType(mt.value); setResult(null); setError(null); }}
-                className={`flex-1 py-2 px-4 rounded-lg border text-sm font-medium transition-colors ${
+                className={`py-1.5 px-4 rounded-md text-sm font-medium transition-all ${
                   masterType === mt.value
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
+                    ? 'bg-white text-gray-900 shadow-sm border border-gray-200'
+                    : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
                 {t(mt.labelKey)}
@@ -96,7 +96,7 @@ export default function ConfigPage() {
           onDragOver={(e) => e.preventDefault()}
           onDrop={handleDrop}
           onClick={() => fileInputRef.current && fileInputRef.current.click()}
-          className="cursor-pointer border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 transition-colors"
+          className="cursor-pointer border-2 border-dashed border-gray-200 rounded-lg p-8 text-center hover:border-blue-400 hover:bg-blue-50/30 transition-colors"
         >
           {file ? (
             <div className="space-y-1">
@@ -144,7 +144,7 @@ export default function ConfigPage() {
             <button
               type="button"
               onClick={handleReset}
-              className="py-2 px-4 rounded-lg border border-gray-300 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+              className="py-2 px-4 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
             >
               {t('config_reset')}
             </button>

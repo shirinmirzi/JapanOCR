@@ -18,8 +18,8 @@ const statusBadge = (status) => {
 };
 
 const KPI = ({ label, value, sub }) => (
-  <div className="bg-white rounded-xl shadow p-5">
-    <p className="text-sm text-gray-500 mb-1">{label}</p>
+  <div className="bg-white rounded-xl border border-gray-200 p-5">
+    <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">{label}</p>
     <p className="text-3xl font-bold text-gray-900">{value}</p>
     {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
   </div>
@@ -83,15 +83,20 @@ export default function DashboardPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">{t('dash_title')}</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">{t('dash_title')}</h1>
+          <p className="mt-1 text-sm text-gray-400">Overview of processing activity and job status.</p>
+        </div>
         <div className="flex items-center gap-3">
-          <div className="flex gap-1">
+          <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
             {['1h', '24h', '7d', 'all'].map((r) => (
               <button
                 key={r}
                 onClick={() => setRange(r)}
-                className={`px-3 py-1 text-xs rounded ${
-                  range === r ? 'bg-blue-500 text-white' : 'border border-gray-300 hover:bg-gray-50'
+                className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                  range === r
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
                 {r}
@@ -101,7 +106,7 @@ export default function DashboardPage() {
           <button
             onClick={load}
             disabled={loading}
-            className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+            className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
           >
             {t('dash_refresh')}
           </button>
@@ -126,21 +131,23 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         {/* Vendor bar chart */}
-        <div className="bg-white rounded-xl shadow p-5">
-          <h2 className="font-semibold text-gray-900 mb-4">Top Vendors</h2>
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <h2 className="font-semibold text-gray-900 mb-4 text-sm">Top Vendors</h2>
           {vendors.length === 0 ? (
-            <p className="text-sm text-gray-400">No data</p>
+            <div className="py-8 text-center">
+              <p className="text-sm text-gray-400">No data</p>
+            </div>
           ) : (
             <div className="space-y-3">
               {vendors.slice(0, 5).map((v) => (
                 <div key={v.vendor_name}>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-gray-700 truncate">{v.vendor_name}</span>
-                    <span className="text-gray-500 ml-2">{v.count}</span>
+                  <div className="flex justify-between text-sm mb-1.5">
+                    <span className="text-gray-700 truncate text-xs">{v.vendor_name}</span>
+                    <span className="text-gray-500 ml-2 text-xs font-medium">{v.count}</span>
                   </div>
-                  <div className="w-full bg-gray-100 rounded-full h-2">
+                  <div className="w-full bg-gray-100 rounded-full h-1.5">
                     <div
-                      className="h-2 rounded-full"
+                      className="h-1.5 rounded-full"
                       style={{
                         width: `${(v.count / maxVendorCount) * 100}%`,
                         backgroundColor: '#009DD0',
@@ -154,24 +161,26 @@ export default function DashboardPage() {
         </div>
 
         {/* Status distribution */}
-        <div className="bg-white rounded-xl shadow p-5">
-          <h2 className="font-semibold text-gray-900 mb-4">Status Distribution</h2>
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <h2 className="font-semibold text-gray-900 mb-4 text-sm">Status Distribution</h2>
           {Object.keys(byStatus).length === 0 ? (
-            <p className="text-sm text-gray-400">No data</p>
+            <div className="py-8 text-center">
+              <p className="text-sm text-gray-400">No data</p>
+            </div>
           ) : (
             <div className="space-y-3">
               {Object.entries(byStatus).map(([status, count]) => (
                 <div key={status} className="flex items-center gap-3">
-                  <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${statusBadge(status)}`}>
+                  <span className={`px-2 py-0.5 text-xs rounded-full font-medium flex-shrink-0 ${statusBadge(status)}`}>
                     {status}
                   </span>
-                  <div className="flex-1 bg-gray-100 rounded-full h-2">
+                  <div className="flex-1 bg-gray-100 rounded-full h-1.5">
                     <div
-                      className="h-2 rounded-full bg-blue-400"
+                      className="h-1.5 rounded-full bg-blue-400"
                       style={{ width: `${(count / Math.max(totalInvoices, 1)) * 100}%` }}
                     />
                   </div>
-                  <span className="text-sm text-gray-600">{count}</span>
+                  <span className="text-sm text-gray-600 font-medium flex-shrink-0">{count}</span>
                 </div>
               ))}
             </div>
@@ -180,57 +189,57 @@ export default function DashboardPage() {
       </div>
 
       {/* Recent Jobs */}
-      <div className="bg-white rounded-xl shadow p-5 mb-6">
-        <h2 className="font-semibold text-gray-900 mb-3">Recent Jobs</h2>
+      <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6">
+        <h2 className="font-semibold text-gray-900 mb-4 text-sm">Recent Jobs</h2>
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-gray-200 text-left">
-              <th className="pb-2 font-medium text-gray-600">ID</th>
-              <th className="pb-2 font-medium text-gray-600">Status</th>
-              <th className="pb-2 font-medium text-gray-600">Progress</th>
-              <th className="pb-2 font-medium text-gray-600">Created</th>
+            <tr className="border-b border-gray-100 text-left">
+              <th className="pb-2 text-xs font-medium text-gray-400 uppercase tracking-wide">ID</th>
+              <th className="pb-2 text-xs font-medium text-gray-400 uppercase tracking-wide">Status</th>
+              <th className="pb-2 text-xs font-medium text-gray-400 uppercase tracking-wide">Progress</th>
+              <th className="pb-2 text-xs font-medium text-gray-400 uppercase tracking-wide">Created</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-gray-50">
             {(recent.jobs || []).map((job) => (
               <tr key={job.id}>
-                <td className="py-2 font-mono text-xs">{job.id.slice(0, 8)}…</td>
+                <td className="py-2 font-mono text-xs text-gray-700">{job.id.slice(0, 8)}…</td>
                 <td className="py-2">
                   <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${statusBadge(job.status)}`}>
                     {job.status}
                   </span>
                 </td>
-                <td className="py-2 text-gray-700">{job.processed_count}/{job.total_count}</td>
-                <td className="py-2 text-gray-500">{formatDate(job.created_at)}</td>
+                <td className="py-2 text-gray-600">{job.processed_count}/{job.total_count}</td>
+                <td className="py-2 text-gray-400 text-xs">{formatDate(job.created_at)}</td>
               </tr>
             ))}
             {(recent.jobs || []).length === 0 && (
-              <tr><td colSpan={4} className="py-4 text-center text-gray-400">No jobs yet</td></tr>
+              <tr><td colSpan={4} className="py-6 text-center text-gray-400 text-sm">No jobs yet</td></tr>
             )}
           </tbody>
         </table>
       </div>
 
       {/* Recent Invoices */}
-      <div className="bg-white rounded-xl shadow p-5">
-        <h2 className="font-semibold text-gray-900 mb-3">Recent Invoices</h2>
+      <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <h2 className="font-semibold text-gray-900 mb-4 text-sm">Recent Invoices</h2>
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-gray-200 text-left">
-              <th className="pb-2 font-medium text-gray-600">Invoice #</th>
-              <th className="pb-2 font-medium text-gray-600">Vendor</th>
-              <th className="pb-2 font-medium text-gray-600">Total</th>
-              <th className="pb-2 font-medium text-gray-600">Date</th>
-              <th className="pb-2 font-medium text-gray-600">Status</th>
+            <tr className="border-b border-gray-100 text-left">
+              <th className="pb-2 text-xs font-medium text-gray-400 uppercase tracking-wide">Invoice #</th>
+              <th className="pb-2 text-xs font-medium text-gray-400 uppercase tracking-wide">Vendor</th>
+              <th className="pb-2 text-xs font-medium text-gray-400 uppercase tracking-wide">Total</th>
+              <th className="pb-2 text-xs font-medium text-gray-400 uppercase tracking-wide">Date</th>
+              <th className="pb-2 text-xs font-medium text-gray-400 uppercase tracking-wide">Status</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-gray-50">
             {(recent.invoices || []).map((inv) => (
               <tr key={inv.id}>
-                <td className="py-2 text-gray-900">{inv.invoice_number || '—'}</td>
-                <td className="py-2 text-gray-700">{inv.vendor_name || '—'}</td>
-                <td className="py-2 text-gray-700">{inv.total_amount || '—'}</td>
-                <td className="py-2 text-gray-500">{inv.invoice_date || '—'}</td>
+                <td className="py-2 text-gray-900 font-medium">{inv.invoice_number || '—'}</td>
+                <td className="py-2 text-gray-600">{inv.vendor_name || '—'}</td>
+                <td className="py-2 text-gray-600">{inv.total_amount || '—'}</td>
+                <td className="py-2 text-gray-400 text-xs">{inv.invoice_date || '—'}</td>
                 <td className="py-2">
                   <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${statusBadge(inv.status)}`}>
                     {inv.status}
@@ -239,7 +248,7 @@ export default function DashboardPage() {
               </tr>
             ))}
             {(recent.invoices || []).length === 0 && (
-              <tr><td colSpan={5} className="py-4 text-center text-gray-400">No invoices yet</td></tr>
+              <tr><td colSpan={5} className="py-6 text-center text-gray-400 text-sm">No invoices yet</td></tr>
             )}
           </tbody>
         </table>
