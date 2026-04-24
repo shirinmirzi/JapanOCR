@@ -21,7 +21,9 @@ _MASTER_TABLE = {
 def _parse_excel(content: bytes) -> list[dict]:
     """Parse an xlsx/xlsm workbook.
 
-    Returns rows as dicts with keys customer_cd and destination_cd.
+    Row 1 is treated as the header row and is skipped.
+    Returns rows as dicts with keys customer_cd, destination_cd, and source_row
+    where source_row is the 1-based original Excel row number for traceability.
     """
     try:
         import openpyxl
@@ -33,37 +35,58 @@ def _parse_excel(content: bytes) -> list[dict]:
     wb = openpyxl.load_workbook(filename=io.BytesIO(content), data_only=True)
     ws = wb.active
     rows = []
-    for row in ws.iter_rows(values_only=True):
+    for excel_row_num, row in enumerate(ws.iter_rows(values_only=True), start=1):
+        if excel_row_num == 1:
+            # Skip the header row (Customer CD., 送付先 CD., …)
+            continue
         if all(cell is None for cell in row):
             continue
         customer_cd = str(row[0]).strip() if row[0] is not None else ""
         destination_cd = str(row[1]).strip() if len(row) > 1 and row[1] is not None else ""
-        rows.append({"customer_cd": customer_cd, "destination_cd": destination_cd})
+        rows.append(
+            {"customer_cd": customer_cd, "destination_cd": destination_cd, "source_row": excel_row_num}
+        )
     return rows
 
 
 def _parse_csv(content: bytes) -> list[dict]:
-    """Parse a UTF-8 CSV file and return rows as dicts with keys customer_cd and destination_cd."""
+    """Parse a UTF-8 CSV file.
+
+    Row 1 is treated as the header row and is skipped.
+    Returns rows as dicts with keys customer_cd, destination_cd, and source_row
+    where source_row is the 1-based original CSV row number for traceability.
+    """
     text = content.decode("utf-8-sig")  # handles BOM if present
     reader = csv.reader(io.StringIO(text))
     rows = []
-    for row in reader:
+    for csv_row_num, row in enumerate(reader, start=1):
+        if csv_row_num == 1:
+            # Skip the header row
+            continue
         if not any(cell.strip() for cell in row):
             continue
         customer_cd = row[0].strip() if len(row) > 0 else ""
         destination_cd = row[1].strip() if len(row) > 1 else ""
-        rows.append({"customer_cd": customer_cd, "destination_cd": destination_cd})
+        rows.append(
+            {"customer_cd": customer_cd, "destination_cd": destination_cd, "source_row": csv_row_num}
+        )
     return rows
 
 
 def _validate_rows(rows: list[dict]) -> tuple[list[dict], list[dict]]:
-    """Split rows into valid and invalid (missing required columns) lists."""
+    """Split rows into valid and invalid (missing required columns) lists.
+
+    The source_row key (original Excel/CSV row number) is used as row_number
+    when present; otherwise a 1-based sequential index is used as a fallback.
+    """
     valid, invalid = [], []
     for i, row in enumerate(rows, start=1):
+        row_number = row.get("source_row", i)
         if not row["customer_cd"]:
-            invalid.append({"row": i, "reason": "customer_cd is empty", "data": row})
+            invalid.append({"row": row_number, "reason": "customer_cd is empty", "data": row})
         else:
-            valid.append({**row, "row_number": i})
+            data = {k: v for k, v in row.items() if k != "source_row"}
+            valid.append({**data, "row_number": row_number})
     return valid, invalid
 
 

@@ -64,28 +64,37 @@ def _make_xlsx_bytes(rows: list) -> bytes:
 
 
 def test_parse_csv_returns_rows() -> None:
-    data = _make_csv_bytes([['199621', '送付無し'], ['199622', '123']])
+    data = _make_csv_bytes([['Customer CD.', '送付先 CD.'], ['199621', '送付無し'], ['199622', '123']])
     rows = _parse_csv(data)
     assert len(rows) == 2
-    assert rows[0] == {'customer_cd': '199621', 'destination_cd': '送付無し'}
-    assert rows[1] == {'customer_cd': '199622', 'destination_cd': '123'}
+    assert rows[0]['customer_cd'] == '199621'
+    assert rows[0]['destination_cd'] == '送付無し'
+    assert rows[0]['source_row'] == 2
+    assert rows[1]['customer_cd'] == '199622'
+    assert rows[1]['destination_cd'] == '123'
+    assert rows[1]['source_row'] == 3
 
 
 def test_parse_csv_skips_blank_rows() -> None:
-    data = _make_csv_bytes([['199621', '123'], ['', ''], ['199622', '456']])
+    data = _make_csv_bytes([['Customer CD.', '送付先 CD.'], ['199621', '123'], ['', ''], ['199622', '456']])
     rows = _parse_csv(data)
     assert len(rows) == 2
 
 
 def test_parse_excel_returns_rows() -> None:
-    data = _make_xlsx_bytes([['199621', '破棄'], ['199622', '99']])
+    data = _make_xlsx_bytes([['Customer CD.', '送付先 CD.'], ['199621', '破棄'], ['199622', '99']])
     rows = _parse_excel(data)
     assert len(rows) == 2
-    assert rows[0] == {'customer_cd': '199621', 'destination_cd': '破棄'}
+    assert rows[0]['customer_cd'] == '199621'
+    assert rows[0]['destination_cd'] == '破棄'
+    assert rows[0]['source_row'] == 2
+    assert rows[1]['customer_cd'] == '199622'
+    assert rows[1]['destination_cd'] == '99'
+    assert rows[1]['source_row'] == 3
 
 
 def test_parse_excel_skips_blank_rows() -> None:
-    data = _make_xlsx_bytes([['199621', '123'], [None, None], ['199622', '456']])
+    data = _make_xlsx_bytes([['Customer CD.', '送付先 CD.'], ['199621', '123'], [None, None], ['199622', '456']])
     rows = _parse_excel(data)
     assert len(rows) == 2
 
@@ -183,6 +192,7 @@ def test_master_upload_csv_inserts_rows(monkeypatch) -> None:
     monkeypatch.setattr('routes.config_routes.get_db_connection', _fake_db)
 
     csv_bytes = _make_csv_bytes([
+        ['Customer CD.', '送付先 CD.'],
         ['199621', '送付無し'],
         ['199622', '123'],
         ['', 'skip-this'],
@@ -201,5 +211,5 @@ def test_master_upload_csv_inserts_rows(monkeypatch) -> None:
     assert body['inserted'] == 2
     assert body['skipped'] == 1
     assert len(body['invalid_rows']) == 1
-    # Verify Japanese text was preserved
-    assert ('199621', '送付無し', 1) in inserted_rows
+    # Verify Japanese text was preserved; source row 2 is the first data row
+    assert ('199621', '送付無し', 2) in inserted_rows
