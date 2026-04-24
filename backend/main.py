@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config.database import close_connection_pool, execute_query, init_database
 from middleware.entra_auth import entra_auth_middleware
 from routes.auth_routes import router as auth_router
+from routes.config_routes import router as config_router
 from routes.dashboard_routes import router as dashboard_router
 from routes.invoice_routes import router as invoice_router
 from routes.jobs_routes import router as jobs_router
@@ -58,6 +59,7 @@ app.include_router(invoice_router)
 app.include_router(jobs_router)
 app.include_router(logs_router)
 app.include_router(dashboard_router)
+app.include_router(config_router)
 
 
 @app.get("/health")

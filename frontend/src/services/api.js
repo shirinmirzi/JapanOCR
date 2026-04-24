@@ -68,6 +68,20 @@ export async function logout() {
   msalInstance.logoutRedirect({ postLogoutRedirectUri: '/login' });
 }
 
+// Config / Master Data
+export async function uploadMasterData(masterType, file) {
+  const headers = await getAuthHeader();
+  const formData = new FormData();
+  formData.append('master_type', masterType);
+  formData.append('file', file);
+  const response = await axios.post(`${BASE_URL}/api/config/master-upload`, formData, { headers });
+  return response.data;
+}
+
+export async function getMasterData(masterType) {
+  return apiGet(`/api/config/master-data/${masterType}`);
+}
+
 // Invoice operations
 export async function uploadInvoice(file, invoiceType = 'daily', userDate = null) {
   const headers = await getAuthHeader();
