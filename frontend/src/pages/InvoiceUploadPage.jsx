@@ -77,8 +77,6 @@ function SingleUpload() {
   });
   const [error, setError] = useState(null);
   const [invoiceType, setInvoiceType] = useState(() => localStorage.getItem('single_invoice_type') || 'daily');
-  const [userDate, setUserDate] = useState('');
-  const [dateError, setDateError] = useState(null);
   const inputRef = useRef();
 
   const handleFile = (f) => {
