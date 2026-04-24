@@ -70,17 +70,41 @@ export default function Header() {
 
   return (
     <header className="text-white shadow-lg" style={{ backgroundColor: HEADER_BG }}>
-      {/* Top bar: logo + right controls */}
+      {/* Top bar: logo + module toggle + right controls */}
       <div className="w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-24 py-3 flex items-center justify-between">
-        {/* Logo */}
-        <div className="flex items-center gap-3">
-          <div
-            className="w-7 h-7 rounded flex items-center justify-center text-xs font-bold"
-            style={{ backgroundColor: ACTIVE_COLOR }}
-          >
-            OCR
+        {/* Left: Logo + module toggle */}
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            <div
+              className="w-7 h-7 rounded flex items-center justify-center text-xs font-bold"
+              style={{ backgroundColor: ACTIVE_COLOR }}
+            >
+              OCR
+            </div>
+            <span className="text-lg font-bold tracking-wide">{t('app_title')}</span>
           </div>
-          <span className="text-lg font-bold tracking-wide">{t('app_title')}</span>
+
+          {/* Divider */}
+          <div className="h-5 w-px bg-white/20" />
+
+          {/* Module toggle – positioned next to the branding */}
+          <div className="flex items-center gap-1">
+            {MODULES.map((m) => (
+              <button
+                key={m}
+                onClick={() => setModule(m)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold uppercase tracking-wide transition-all ${
+                  module === m
+                    ? 'text-white'
+                    : 'text-white/50 hover:text-white/80 hover:bg-white/10'
+                }`}
+                style={module === m ? { backgroundColor: ACTIVE_COLOR } : undefined}
+              >
+                {MODULE_ICONS[m]}
+                {t(`logs_module_${m}`)}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Right side: lang + user */}
@@ -143,28 +167,9 @@ export default function Header() {
         </div>
       </div>
 
-      {/* Bottom bar: module toggle + navigation */}
+      {/* Bottom bar: navigation tabs directly under the module selector */}
       <div style={{ backgroundColor: NAV_BG }} className="border-t border-white/10">
-        <div className="w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-24 flex items-center justify-between">
-          {/* Module toggle */}
-          <div className="flex items-center">
-            {MODULES.map((m, idx) => (
-              <button
-                key={m}
-                onClick={() => setModule(m)}
-                className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide transition-all border-b-2 ${
-                  module === m
-                    ? 'text-white'
-                    : 'text-white/50 border-transparent hover:text-white/80 hover:border-white/20'
-                } ${idx > 0 ? 'ml-1' : ''}`}
-                style={module === m ? { borderColor: ACTIVE_COLOR } : undefined}
-              >
-                {MODULE_ICONS[m]}
-                {t(`logs_module_${m}`)}
-              </button>
-            ))}
-          </div>
-
+        <div className="w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-24 flex items-center justify-start">
           {/* Navigation links */}
           <nav className="hidden md:flex items-center">
             {navItems.map((item) => (
