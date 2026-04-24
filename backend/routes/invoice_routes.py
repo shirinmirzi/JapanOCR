@@ -69,6 +69,7 @@ async def _process_single_file(
         filename,
         user_id=user_id,
         execution_folder=execution_folder,
+        module="invoice",
     )
 
     try:
@@ -188,6 +189,7 @@ def _background_bulk_process(job_id: str, files_data: list, user_id: str, invoic
             filename,
             user_id=user_id,
             execution_folder=execution_folder,
+            module="invoice",
         )
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
