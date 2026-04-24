@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 import main
 from routes.auth_routes import compute_initials
 from routes.config_routes import _parse_csv, _parse_excel, _validate_rows
+from routes.invoice_routes import _DO_NOT_SEND_VALUE, _lookup_daily_master
 
 
 def test_compute_initials_handles_names() -> None:
@@ -213,3 +214,161 @@ def test_master_upload_csv_inserts_rows(monkeypatch) -> None:
     assert len(body['invalid_rows']) == 1
     # Verify Japanese text was preserved; source row 2 is the first data row
     assert ('199621', '送付無し', 2) in inserted_rows
+
+
+# ── Daily invoice routing ─────────────────────────────────────────────────────
+
+
+def _make_fake_db_lookup(mapping):
+    """Return a context-manager factory that mimics get_db_connection for
+    _lookup_daily_master, using *mapping* as the in-memory master table."""
+    from contextlib import contextmanager
+
+    class _FakeCursor:
+        def __init__(self):
+            self.description = [('destination_cd',)]
+            self._result = None
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            pass
+
+        def execute(self, sql, params=None):
+            if mapping is not None and params:
+                value = mapping.get(params[0])
+                self._result = {'destination_cd': value} if value is not None else None
+            else:
+                self._result = None
+
+        def fetchone(self):
+            return self._result
+
+    class _FakeConn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            pass
+
+        def cursor(self):
+            return _FakeCursor()
+
+        def commit(self):
+            pass
+
+        def rollback(self):
+            pass
+
+    @contextmanager
+    def _fake_db():
+        yield _FakeConn()
+
+    return _fake_db
+
+
+def test_do_not_send_value_is_correct_japanese() -> None:
+    """The constant must match the Japanese value used in the master table."""
+    assert _DO_NOT_SEND_VALUE == '送付無し、破棄'
+
+
+def test_lookup_daily_master_returns_destination_cd(monkeypatch) -> None:
+    monkeypatch.setattr(
+        'routes.invoice_routes.get_db_connection',
+        _make_fake_db_lookup({'199621': '送付無し、破棄'}),
+    )
+    assert _lookup_daily_master('199621') == '送付無し、破棄'
+
+
+def test_lookup_daily_master_returns_none_when_not_found(monkeypatch) -> None:
+    monkeypatch.setattr(
+        'routes.invoice_routes.get_db_connection',
+        _make_fake_db_lookup({}),
+    )
+    assert _lookup_daily_master('999999') is None
+
+
+def test_lookup_daily_master_returns_none_on_db_error(monkeypatch) -> None:
+    def _bad_db():
+        raise RuntimeError('db is down')
+
+    monkeypatch.setattr('routes.invoice_routes.get_db_connection', _bad_db)
+    assert _lookup_daily_master('199621') is None
+
+
+def _fake_invoice_upload_infra(monkeypatch, master_mapping):
+    """Patch all external dependencies for the /api/invoices/upload endpoint."""
+    monkeypatch.setattr('middleware.entra_auth.SKIP_AUTH', True)
+
+    monkeypatch.setattr(
+        'routes.invoice_routes.analyze_document',
+        lambda *a, **kw: {},
+    )
+    monkeypatch.setattr(
+        'routes.invoice_routes.extract_invoice_data',
+        lambda *a, **kw: {
+            'customer_code': '199621',
+            'invoice_number': 'INV001',
+            'invoice_date': '20260401',
+        },
+    )
+
+    monkeypatch.setattr(
+        'routes.invoice_routes.azure_storage_client.upload_file',
+        lambda content, path: f'https://fake/{path}',
+    )
+
+    monkeypatch.setattr('routes.invoice_routes.log_processing_start', lambda *a, **kw: 1)
+    monkeypatch.setattr('routes.invoice_routes.update_log_entry', lambda *a, **kw: None)
+    monkeypatch.setattr('routes.invoice_routes.create_invoice', lambda **kw: {'id': 42})
+
+    monkeypatch.setattr(
+        'routes.invoice_routes.get_db_connection',
+        _make_fake_db_lookup(master_mapping),
+    )
+
+
+def _minimal_pdf_bytes() -> bytes:
+    """A minimal but valid PDF byte string for use in upload tests."""
+    return b'%PDF-1.4 1 0 obj<</Type/Catalog>>endobj\n%%EOF'
+
+
+def test_daily_upload_routes_to_processed_files_when_found(monkeypatch) -> None:
+    _fake_invoice_upload_infra(monkeypatch, {'199621': '199621'})
+    with TestClient(main.app) as client:
+        response = client.post(
+            '/api/invoices/upload',
+            data={'invoice_type': 'daily'},
+            files={'file': ('inv.pdf', _minimal_pdf_bytes(), 'application/pdf')},
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert body['output_folder'] == 'ProcessedFiles'
+    assert body['renamed_filename'] is not None
+
+
+def test_daily_upload_routes_to_do_not_send_when_mapped(monkeypatch) -> None:
+    _fake_invoice_upload_infra(monkeypatch, {'199621': '送付無し、破棄'})
+    with TestClient(main.app) as client:
+        response = client.post(
+            '/api/invoices/upload',
+            data={'invoice_type': 'daily'},
+            files={'file': ('inv.pdf', _minimal_pdf_bytes(), 'application/pdf')},
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert body['output_folder'] == 'DoNotSend'
+
+
+def test_daily_upload_routes_to_error_when_customer_not_found(monkeypatch) -> None:
+    _fake_invoice_upload_infra(monkeypatch, {})
+    with TestClient(main.app) as client:
+        response = client.post(
+            '/api/invoices/upload',
+            data={'invoice_type': 'daily'},
+            files={'file': ('inv.pdf', _minimal_pdf_bytes(), 'application/pdf')},
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert body['output_folder'] == 'Error'
