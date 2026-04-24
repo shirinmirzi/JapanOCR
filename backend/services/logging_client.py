@@ -136,6 +136,7 @@ def get_logs_paged(
     sort_by: str = "timestamp",
     sort_dir: str = "desc",
     user_id: str = None,
+    source: str = None,
 ) -> dict:
     allowed_sort = {"timestamp", "filename", "status"}
     if sort_by not in allowed_sort:
@@ -154,8 +155,10 @@ def get_logs_paged(
         params.extend(statuses)
 
     if q:
-        conditions.append("(filename ILIKE %s OR message ILIKE %s)")
-        params.extend([f"%{q}%", f"%{q}%"])
+        conditions.append(
+            "(filename ILIKE %s OR message ILIKE %s OR metadata::text ILIKE %s)"
+        )
+        params.extend([f"%{q}%", f"%{q}%", f"%{q}%"])
 
     if since:
         conditions.append("timestamp >= %s")
@@ -168,6 +171,12 @@ def get_logs_paged(
     if user_id:
         conditions.append("user_id = %s")
         params.append(user_id)
+
+    if source:
+        conditions.append(
+            "(metadata->>'source' = %s OR metadata->>'module' = %s)"
+        )
+        params.extend([source, source])
 
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
     count_sql = f"SELECT COUNT(*) as total FROM logs {where}"

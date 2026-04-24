@@ -65,6 +65,8 @@ const translations = {
     logs_filter_since: 'Since',
     logs_filter_until: 'Until',
     logs_filter_status: 'Status',
+    logs_module_invoice: 'Invoice Processing',
+    logs_module_fax: 'Fax Processing',
   },
   ja: {
     app_title: 'Japan OCR ツール',
@@ -132,6 +134,8 @@ const translations = {
     logs_filter_since: '開始日',
     logs_filter_until: '終了日',
     logs_filter_status: 'ステータス',
+    logs_module_invoice: '請求書処理',
+    logs_module_fax: 'FAX処理',
   },
 };
 
