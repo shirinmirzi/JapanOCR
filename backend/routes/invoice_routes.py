@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
 
+from config.database import get_db_connection
 from middleware.entra_auth import get_current_user
 from services.azure_storage_client import azure_storage_client
 from services.docwise_client import analyze_document, extract_invoice_data
@@ -40,6 +41,9 @@ def _build_execution_folder(user_date: str = None) -> str:
     return f"{date_part}_{time_part}"
 
 
+_DO_NOT_SEND_VALUE = "送付無し、破棄"
+
+
 def _build_renamed_filename(customer_code: str, invoice_number: str, invoice_date: str, user_date: str = None) -> str:
     """Build renamed filename: CustomerCode_InvoiceNumber_YYYYMMDD納品書兼請求書.pdf"""
     if user_date:
@@ -49,6 +53,39 @@ def _build_renamed_filename(customer_code: str, invoice_number: str, invoice_dat
     else:
         date_str = datetime.now(timezone.utc).strftime('%Y%m%d')
     return f"{customer_code}_{invoice_number}_{date_str}納品書兼請求書.pdf"
+
+
+def _lookup_daily_master(customer_code: str):
+    """Return the destination_cd for the given customer_code in daily_invoice_master,
+    or None if no matching row exists."""
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT destination_cd FROM daily_invoice_master "
+                    "WHERE customer_cd = %s LIMIT 1",
+                    (customer_code,),
+                )
+                row = cur.fetchone()
+        if row is None:
+            return None
+        return row["destination_cd"]
+    except Exception as e:
+        logger.error("Failed to look up daily master for customer_code %s: %s", customer_code, e)
+        return None
+
+
+def _resolve_daily_output_folder(customer_code: str):
+    """Look up *customer_code* in the daily master table and return
+    ``(output_folder, keep_renamed)`` where *output_folder* is one of
+    ``'ProcessedFiles'``, ``'DoNotSend'``, or ``'Error'``, and
+    *keep_renamed* indicates whether the renamed filename should be used."""
+    destination_cd = _lookup_daily_master(customer_code)
+    if destination_cd is None:
+        return "Error", False
+    if destination_cd == _DO_NOT_SEND_VALUE:
+        return "DoNotSend", True
+    return "ProcessedFiles", True
 
 
 async def _process_single_file(
@@ -103,6 +140,10 @@ async def _process_single_file(
                 renamed_filename = _build_renamed_filename(
                     customer_code, invoice_number, invoice_date, user_date
                 )
+                # Post-rename: route based on daily master table lookup
+                output_folder, keep_renamed = _resolve_daily_output_folder(customer_code)
+                if not keep_renamed:
+                    renamed_filename = None
 
         dest_name = renamed_filename if renamed_filename else filename
         blob_path = f"executions/{execution_folder}/{output_folder}/{dest_name}"
@@ -223,6 +264,10 @@ def _background_bulk_process(job_id: str, files_data: list, user_id: str, invoic
                 renamed_filename = _build_renamed_filename(
                     customer_code, invoice_number, invoice_date, user_date
                 )
+                # Post-rename: route based on daily master table lookup
+                output_folder, keep_renamed = _resolve_daily_output_folder(customer_code)
+                if not keep_renamed:
+                    renamed_filename = None
 
         dest_name = renamed_filename if renamed_filename else filename
         blob_path = f"executions/{execution_folder}/{output_folder}/{dest_name}"
