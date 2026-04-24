@@ -88,6 +88,10 @@ def _lookup_master(customer_code: str, invoice_type: str) -> tuple[str, bool]:
         return customer_code, False
 
     destination_cd = (row.get("destination_cd") or "").strip()
+    # An empty destination_cd means the row exists but has no routing code —
+    # fall back to the original customer_code without DoNotSend routing.
+    if not destination_cd:
+        return customer_code, False
     # A destination_cd that is not purely numeric signals a DoNotSend rule
     # (e.g. Japanese words like 送付無し or 破棄).
     if not re.fullmatch(r'\d+', destination_cd):
