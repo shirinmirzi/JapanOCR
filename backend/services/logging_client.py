@@ -16,6 +16,7 @@ def log_invoice_result(
     renamed_filename: str = None,
     folder_name: str = None,
     execution_folder: str = None,
+    module: str = None,
 ):
     merged_metadata = dict(metadata) if metadata else {}
     if renamed_filename is not None:
@@ -24,6 +25,8 @@ def log_invoice_result(
         merged_metadata["folder_name"] = folder_name
     if execution_folder is not None:
         merged_metadata["execution_folder"] = execution_folder
+    if module is not None:
+        merged_metadata["module"] = module
     try:
         execute_write(
             """
@@ -52,6 +55,7 @@ def log_processing_start(
     user_id: str = None,
     execution_folder: str = None,
     folder_name: str = None,
+    module: str = None,
 ) -> int | None:
     """Insert a 'processing' log entry and return its id for later update."""
     merged_metadata = {}
@@ -59,6 +63,8 @@ def log_processing_start(
         merged_metadata["folder_name"] = folder_name
     if execution_folder is not None:
         merged_metadata["execution_folder"] = execution_folder
+    if module is not None:
+        merged_metadata["module"] = module
     try:
         row = execute_write(
             """
@@ -137,6 +143,7 @@ def get_logs_paged(
     sort_dir: str = "desc",
     user_id: str = None,
     source: str = None,
+    module: str = None,
 ) -> dict:
     allowed_sort = {"timestamp", "filename", "status"}
     if sort_by not in allowed_sort:
@@ -177,6 +184,18 @@ def get_logs_paged(
             "(metadata->>'source' = %s OR metadata->>'module' = %s)"
         )
         params.extend([source, source])
+
+    if module:
+        if module == "invoice":
+            # Include entries explicitly tagged as 'invoice' OR legacy entries
+            # that have no module field at all (pre-module-tagging data).
+            conditions.append(
+                "(metadata->>'module' = %s OR metadata->>'module' IS NULL)"
+            )
+            params.append("invoice")
+        else:
+            conditions.append("metadata->>'module' = %s")
+            params.append(module)
 
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
     count_sql = f"SELECT COUNT(*) as total FROM logs {where}"

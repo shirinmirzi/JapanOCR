@@ -171,9 +171,15 @@ export default function LogsPage() {
   const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [expanded, setExpanded] = useState(new Set());
 
-  // Reset to page 1 when the selected module changes
+  // Reset page and clear stale data when the selected module changes so that
+  // the previous module's records are never visible under the new module.
+  // Setting initialLoadDone to false here is intentional: load() will be
+  // called immediately (because module is in its deps) and will set it back
+  // to true as soon as the first response arrives, so the loading placeholder
+  // is only shown briefly during the transition.
   useEffect(() => {
     setPage(1);
+    setData({ items: [], total: 0, total_pages: 1 });
     setInitialLoadDone(false);
   }, [module]);
 
@@ -204,6 +210,7 @@ export default function LogsPage() {
         since: since || undefined,
         until: until || undefined,
         statuses: statuses.length ? statuses : undefined,
+        module: module || undefined,
       };
       const result = await getLogsPaged(params);
       // Discard stale responses from superseded requests
@@ -211,11 +218,15 @@ export default function LogsPage() {
       setData(result);
       setInitialLoadDone(true);
     } catch (e) {
-      if (myId === loadIdRef.current) console.error(e);
+      if (myId === loadIdRef.current) {
+        console.error(e);
+        // Mark load as done even on error so the UI doesn't stay blank
+        setInitialLoadDone(true);
+      }
     } finally {
       if (myId === loadIdRef.current) setLoading(false);
     }
-  }, [page, q, since, until, statuses]);
+  }, [page, q, since, until, statuses, module]);
 
   // Keep a stable ref to the latest load function so the polling interval
   // doesn't need to be recreated every time data changes.
@@ -272,7 +283,7 @@ export default function LogsPage() {
       <div className="flex items-start justify-between mb-4">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-gray-900">{t('logs_title')}</h1>
+            <h1 className="text-2xl font-bold text-gray-900">{t(`logs_module_${module}`)}</h1>
             {loading && (
               <span className="animate-spin inline-block w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full" aria-label="loading" />
             )}

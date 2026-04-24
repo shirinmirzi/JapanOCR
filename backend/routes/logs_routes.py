@@ -22,6 +22,7 @@ async def logs_paged(
     sort_dir: str = Query("desc"),
     user_id: str = Query(None),
     source: str = Query(None),
+    module: str = Query(None),
     user: dict = Depends(get_current_user),
 ):
     return get_logs_paged(
@@ -36,6 +37,7 @@ async def logs_paged(
         sort_dir=sort_dir,
         user_id=user_id,
         source=source,
+        module=module,
     )
 
 
