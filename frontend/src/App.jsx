@@ -11,6 +11,7 @@ import InvoiceUploadPage from './pages/InvoiceUploadPage';
 import JobsPage from './pages/JobsPage';
 import LogsPage from './pages/LogsPage';
 import DashboardPage from './pages/DashboardPage';
+import ConfigPage from './pages/ConfigPage';
 
 export default function App() {
   return (
@@ -33,6 +34,7 @@ export default function App() {
               <Route path="jobs" element={<JobsPage />} />
               <Route path="logs" element={<LogsPage />} />
               <Route path="dashboard" element={<DashboardPage />} />
+              <Route path="config" element={<ConfigPage />} />
             </Route>
             <Route path="*" element={<Navigate to="/upload" replace />} />
           </Routes>

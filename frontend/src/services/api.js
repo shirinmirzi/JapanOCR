@@ -131,3 +131,13 @@ export async function getLogsPaged(params = {}) {
 export async function getDashboardSummary(params = {}) {
   return apiGet('/api/dashboard/summary', params);
 }
+
+// Config: master data upload
+export async function uploadMasterData(file, masterType) {
+  const headers = await getAuthHeader();
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('master_type', masterType);
+  const response = await axios.post(`${BASE_URL}/api/config/master-upload`, formData, { headers });
+  return response.data;
+}

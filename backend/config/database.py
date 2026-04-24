@@ -140,6 +140,26 @@ def init_database():
                 "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS order_number TEXT"
             )
 
+            # Master data tables
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS daily_invoice_master (
+                    id SERIAL PRIMARY KEY,
+                    customer_cd TEXT,
+                    route_label TEXT,
+                    extra JSONB,
+                    uploaded_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS monthly_invoice_master (
+                    id SERIAL PRIMARY KEY,
+                    customer_cd TEXT,
+                    route_label TEXT,
+                    extra JSONB,
+                    uploaded_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                )
+            """)
+
             # Indexes for jobs
             cur.execute(
                 "CREATE INDEX IF NOT EXISTS idx_jobs_created_at "
