@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { getLogsPaged } from '../services/api';
+import { useModule } from '../context/ModuleContext';
 import { t } from '../i18n';
-
-const MODULES = ['invoice', 'fax'];
 
 const STATUS_OPTIONS = [
   'processing', 'success', 'processed', 'completed',
@@ -157,15 +156,8 @@ function Chevron({ open }) {
 }
 
 export default function LogsPage() {
-  // Persist the selected module across page visits
-  const [module, setModuleState] = useState(
-    () => localStorage.getItem('logs_module') || 'invoice'
-  );
-  const setModule = (m) => {
-    localStorage.setItem('logs_module', m);
-    setModuleState(m);
-    setPage(1);
-  };
+  // Read selected module from the global header toggle
+  const { module } = useModule();
 
   const [data, setData] = useState({ items: [], total: 0, total_pages: 1 });
   const [page, setPage] = useState(1);
@@ -178,6 +170,12 @@ export default function LogsPage() {
   const [loading, setLoading] = useState(false);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [expanded, setExpanded] = useState(new Set());
+
+  // Reset to page 1 when the selected module changes
+  useEffect(() => {
+    setPage(1);
+    setInitialLoadDone(false);
+  }, [module]);
 
   // Debounce the search input: update the API query 300 ms after typing stops
   useEffect(() => {
@@ -206,7 +204,6 @@ export default function LogsPage() {
         since: since || undefined,
         until: until || undefined,
         statuses: statuses.length ? statuses : undefined,
-        source: module,
       };
       const result = await getLogsPaged(params);
       // Discard stale responses from superseded requests
@@ -218,7 +215,7 @@ export default function LogsPage() {
     } finally {
       if (myId === loadIdRef.current) setLoading(false);
     }
-  }, [page, q, since, until, statuses, module]);
+  }, [page, q, since, until, statuses]);
 
   // Keep a stable ref to the latest load function so the polling interval
   // doesn't need to be recreated every time data changes.
@@ -274,22 +271,6 @@ export default function LogsPage() {
       {/* Header */}
       <div className="flex items-start justify-between mb-4">
         <div>
-          {/* Module toggle — compact segmented control */}
-          <div className="flex rounded-lg border border-gray-200 overflow-hidden w-fit mb-2">
-            {MODULES.map((m) => (
-              <button
-                key={m}
-                onClick={() => setModule(m)}
-                className={`px-3 py-1 text-xs font-medium transition-colors ${
-                  module === m
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                {t(`logs_module_${m}`)}
-              </button>
-            ))}
-          </div>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold text-gray-900">{t('logs_title')}</h1>
             {loading && (
