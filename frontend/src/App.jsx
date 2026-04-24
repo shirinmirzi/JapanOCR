@@ -8,7 +8,6 @@ import PrivateRoute from './components/PrivateRoute';
 import MainLayout from './layouts/MainLayout';
 import LoginPage from './pages/LoginPage';
 import InvoiceUploadPage from './pages/InvoiceUploadPage';
-import JobsPage from './pages/JobsPage';
 import LogsPage from './pages/LogsPage';
 import DashboardPage from './pages/DashboardPage';
 import ConfigPage from './pages/ConfigPage';
@@ -31,7 +30,6 @@ export default function App() {
             >
               <Route index element={<Navigate to="/upload" replace />} />
               <Route path="upload" element={<InvoiceUploadPage />} />
-              <Route path="jobs" element={<JobsPage />} />
               <Route path="logs" element={<LogsPage />} />
               <Route path="dashboard" element={<DashboardPage />} />
               <Route path="config" element={<ConfigPage />} />
