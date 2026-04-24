@@ -74,8 +74,6 @@ export default function DashboardPage() {
   const failed = byStatus.failed || 0;
   const successRate = totalInvoices > 0 ? Math.round((processed / totalInvoices) * 100) : 0;
 
-  const activeJobs = (recent.jobs || []).filter((j) => ['queued', 'processing'].includes(j.status)).length;
-
   const maxVendorCount = vendors.reduce((max, v) => Math.max(max, v.count), 1);
 
   const formatDate = (ts) => ts ? new Date(ts).toLocaleString() : '—';
@@ -85,7 +83,7 @@ export default function DashboardPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">{t('dash_title')}</h1>
-          <p className="mt-1 text-sm text-gray-400">Overview of processing activity and job status.</p>
+          <p className="mt-1 text-sm text-gray-400">Overview of processing activity.</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
@@ -123,9 +121,7 @@ export default function DashboardPage() {
       </div>
 
       {/* KPI Row 2 */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
-        <KPI label="Total Jobs" value={kpis.jobs_total || 0} />
-        <KPI label="Active Jobs" value={activeJobs} />
+      <div className="grid grid-cols-1 gap-4 mb-6">
         <KPI label="Total Logs" value={kpis.logs_total || 0} />
       </div>
 
@@ -186,38 +182,6 @@ export default function DashboardPage() {
             </div>
           )}
         </div>
-      </div>
-
-      {/* Recent Jobs */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6">
-        <h2 className="font-semibold text-gray-900 mb-4 text-sm">Recent Jobs</h2>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-100 text-left">
-              <th className="pb-2 text-xs font-medium text-gray-400 uppercase tracking-wide">ID</th>
-              <th className="pb-2 text-xs font-medium text-gray-400 uppercase tracking-wide">Status</th>
-              <th className="pb-2 text-xs font-medium text-gray-400 uppercase tracking-wide">Progress</th>
-              <th className="pb-2 text-xs font-medium text-gray-400 uppercase tracking-wide">Created</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-50">
-            {(recent.jobs || []).map((job) => (
-              <tr key={job.id}>
-                <td className="py-2 font-mono text-xs text-gray-700">{job.id.slice(0, 8)}…</td>
-                <td className="py-2">
-                  <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${statusBadge(job.status)}`}>
-                    {job.status}
-                  </span>
-                </td>
-                <td className="py-2 text-gray-600">{job.processed_count}/{job.total_count}</td>
-                <td className="py-2 text-gray-400 text-xs">{formatDate(job.created_at)}</td>
-              </tr>
-            ))}
-            {(recent.jobs || []).length === 0 && (
-              <tr><td colSpan={4} className="py-6 text-center text-gray-400 text-sm">No jobs yet</td></tr>
-            )}
-          </tbody>
-        </table>
       </div>
 
       {/* Recent Invoices */}
