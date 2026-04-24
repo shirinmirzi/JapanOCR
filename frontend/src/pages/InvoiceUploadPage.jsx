@@ -99,26 +99,12 @@ function SingleUpload() {
     handleFile(f);
   };
 
-  const handleDateChange = (e) => {
-    const val = e.target.value;
-    setUserDate(val);
-    if (val && !/^\d{8}$/.test(val)) {
-      setDateError('Date must be exactly 8 digits (YYYYMMDD)');
-    } else {
-      setDateError(null);
-    }
-  };
-
   const handleProcess = async () => {
     if (!file) return;
-    if (userDate && !/^\d{8}$/.test(userDate)) {
-      setDateError('Date must be exactly 8 digits (YYYYMMDD)');
-      return;
-    }
     setLoading(true);
     setError(null);
     try {
-      const data = await uploadInvoice(file, invoiceType, userDate || null);
+      const data = await uploadInvoice(file, invoiceType);
       setResult(data);
       localStorage.setItem('single_upload_result', JSON.stringify(data));
       localStorage.setItem('single_invoice_type', invoiceType);
@@ -134,8 +120,6 @@ function SingleUpload() {
     setFileName(null);
     setResult(null);
     setError(null);
-    setUserDate('');
-    setDateError(null);
     localStorage.removeItem('single_upload_result');
     localStorage.removeItem('single_file_name');
     localStorage.removeItem('single_invoice_type');
@@ -148,23 +132,6 @@ function SingleUpload() {
       {!result ? (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 w-full">
           <InvoiceTypeToggle value={invoiceType} onChange={setInvoiceType} />
-
-          <div className="mb-5">
-            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
-              処理日付 (Processing Date)
-            </label>
-            <input
-              type="text"
-              value={userDate}
-              onChange={handleDateChange}
-              placeholder="YYYYMMDD e.g. 20250430"
-              maxLength={8}
-              className="w-full sm:w-64 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400"
-            />
-            {dateError && (
-              <p className="mt-1 text-xs text-red-600">{dateError}</p>
-            )}
-          </div>
 
           <div
             className={`border-2 border-dashed rounded-xl p-8 sm:p-12 text-center cursor-pointer transition-colors ${
@@ -207,7 +174,7 @@ function SingleUpload() {
             </button>
             <button
               onClick={handleProcess}
-              disabled={!file || loading || !!dateError}
+              disabled={!file || loading}
               className="px-6 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-50 transition-opacity hover:opacity-90"
               style={{ backgroundColor: '#009DD0' }}
             >
@@ -345,8 +312,6 @@ function BulkUpload() {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState(null);
   const [invoiceType, setInvoiceType] = useState('daily');
-  const [userDate, setUserDate] = useState('');
-  const [dateError, setDateError] = useState(null);
   const pollRef = useRef(null);
 
   const stopPolling = useCallback(() => {
@@ -390,26 +355,12 @@ function BulkUpload() {
     setError(null);
   };
 
-  const handleDateChange = (e) => {
-    const val = e.target.value;
-    setUserDate(val);
-    if (val && !/^\d{8}$/.test(val)) {
-      setDateError('Date must be exactly 8 digits (YYYYMMDD)');
-    } else {
-      setDateError(null);
-    }
-  };
-
   const handleStart = async () => {
     if (!files.length) return;
-    if (userDate && !/^\d{8}$/.test(userDate)) {
-      setDateError('Date must be exactly 8 digits (YYYYMMDD)');
-      return;
-    }
     setRunning(true);
     setError(null);
     try {
-      const data = await bulkUploadInvoices(files, invoiceType, userDate || null);
+      const data = await bulkUploadInvoices(files, invoiceType);
       localStorage.setItem('bulk_job_id', data.job_id);
       localStorage.setItem('upload_mode', 'bulk');
       setJobId(data.job_id);
@@ -429,8 +380,6 @@ function BulkUpload() {
     setFiles([]);
     setRunning(false);
     setError(null);
-    setUserDate('');
-    setDateError(null);
   };
 
   const progress = job
@@ -443,23 +392,6 @@ function BulkUpload() {
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 w-full">
           <p className="text-sm text-gray-500 mb-5">{t('bulk_hint')}</p>
           <InvoiceTypeToggle value={invoiceType} onChange={setInvoiceType} />
-
-          <div className="mb-5">
-            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
-              処理日付 (Processing Date)
-            </label>
-            <input
-              type="text"
-              value={userDate}
-              onChange={handleDateChange}
-              placeholder="YYYYMMDD e.g. 20250430"
-              maxLength={8}
-              className="w-full sm:w-64 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400"
-            />
-            {dateError && (
-              <p className="mt-1 text-xs text-red-600">{dateError}</p>
-            )}
-          </div>
 
           <div className="flex gap-3 items-center flex-wrap">
             <input
@@ -481,7 +413,7 @@ function BulkUpload() {
             )}
             <button
               onClick={handleStart}
-              disabled={!files.length || running || !!dateError}
+              disabled={!files.length || running}
               className="px-6 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-40 transition-opacity hover:opacity-90"
               style={{ backgroundColor: '#009DD0' }}
             >
