@@ -2,10 +2,28 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { getLogsPaged } from '../services/api';
 import { t } from '../i18n';
 
+const MODULES = ['invoice', 'fax'];
+
 const STATUS_OPTIONS = [
-  'success', 'error', 'failed', 'timeout', 'info',
-  'processed', 'not_found', 'completed', 'incomplete', 'cancelled', 'processing',
+  'processing', 'success', 'processed', 'completed',
+  'error', 'failed', 'not_found', 'timeout',
+  'incomplete', 'cancelled', 'info',
 ];
+
+// Short display labels for the compact status chips
+const STATUS_CHIP_LABELS = {
+  success:    'Success',
+  processed:  'Processed',
+  completed:  'Done',
+  error:      'Error',
+  failed:     'Failed',
+  not_found:  'Not Found',
+  timeout:    'Timeout',
+  incomplete: 'Partial',
+  cancelled:  'Cancelled',
+  processing: 'Active',
+  info:       'Info',
+};
 
 const statusBadge = (status) => {
   const map = {
@@ -139,16 +157,44 @@ function Chevron({ open }) {
 }
 
 export default function LogsPage() {
+  // Persist the selected module across page visits
+  const [module, setModuleState] = useState(
+    () => localStorage.getItem('logs_module') || 'invoice'
+  );
+  const setModule = (m) => {
+    localStorage.setItem('logs_module', m);
+    setModuleState(m);
+    setPage(1);
+  };
+
   const [data, setData] = useState({ items: [], total: 0, total_pages: 1 });
   const [page, setPage] = useState(1);
+  // Separate UI state from debounced API state to keep input responsive
+  const [qInput, setQInput] = useState('');
   const [q, setQ] = useState('');
   const [since, setSince] = useState('');
   const [until, setUntil] = useState('');
   const [statuses, setStatuses] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [expanded, setExpanded] = useState(new Set());
 
+  // Debounce the search input: update the API query 300 ms after typing stops
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setQ(qInput);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [qInput]);
+
+  // Request-dedup counter: each load call gets a unique ID; stale responses
+  // (where a newer call has already fired) are silently discarded so that
+  // rapid typing cannot cause out-of-order result overwrites.
+  const loadIdRef = useRef(0);
+
   const load = useCallback(async (isBackground = false) => {
+    const myId = ++loadIdRef.current;
     // Only show the full loading indicator on explicit loads (initial load or
     // manual refresh), not during silent background polling.
     if (!isBackground) setLoading(true);
@@ -160,15 +206,19 @@ export default function LogsPage() {
         since: since || undefined,
         until: until || undefined,
         statuses: statuses.length ? statuses : undefined,
+        source: module,
       };
       const result = await getLogsPaged(params);
+      // Discard stale responses from superseded requests
+      if (myId !== loadIdRef.current) return;
       setData(result);
+      setInitialLoadDone(true);
     } catch (e) {
-      console.error(e);
+      if (myId === loadIdRef.current) console.error(e);
     } finally {
-      setLoading(false);
+      if (myId === loadIdRef.current) setLoading(false);
     }
-  }, [page, q, since, until, statuses]);
+  }, [page, q, since, until, statuses, module]);
 
   // Keep a stable ref to the latest load function so the polling interval
   // doesn't need to be recreated every time data changes.
@@ -179,14 +229,21 @@ export default function LogsPage() {
     load();
   }, [load]);
 
-  // Auto-refresh every 3 s while actively processing entries are visible; the
-  // interval uses the ref so it always calls the latest load without being
-  // torn down on every data update. Entries older than STALE_PROCESSING_MS are
-  // considered stuck and do not trigger polling so the page does not spin
-  // forever for historical "processing" records left by crashed jobs.
+  // Track when the component was first mounted so we can poll briefly even
+  // when there are no active-processing entries yet.  This handles the
+  // single-upload scenario where a "processing" log entry may not be visible
+  // in the DB the instant the user navigates to this page.
+  const mountTimeRef = useRef(Date.now());
+  // How long after mount to keep polling even without active-processing entries
+  const MOUNT_POLL_WINDOW_MS = 30 * 1000;
+
+  // Auto-refresh every 3 s while there are actively-processing entries OR
+  // while the page was recently mounted (so a just-started single upload
+  // becomes visible quickly without requiring a manual refresh).
   useEffect(() => {
     const hasActive = data.items.some(isActiveProcessing);
-    if (!hasActive) return;
+    const isFreshMount = Date.now() - mountTimeRef.current < MOUNT_POLL_WINDOW_MS;
+    if (!hasActive && !isFreshMount) return;
     const id = setInterval(() => loadRef.current(true), 3000);
     return () => clearInterval(id);
   }, [data.items]);
@@ -215,17 +272,38 @@ export default function LogsPage() {
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold text-gray-900">{t('logs_title')}</h1>
-          {totalProcessing > 0 && (
-            <span className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
-              <span className="animate-spin inline-block w-2.5 h-2.5 border-2 border-blue-500 border-t-transparent rounded-full" />
-              {totalProcessing} processing
-            </span>
-          )}
+      <div className="flex items-start justify-between mb-4">
+        <div>
+          {/* Module toggle — compact segmented control */}
+          <div className="flex rounded-lg border border-gray-200 overflow-hidden w-fit mb-2">
+            {MODULES.map((m) => (
+              <button
+                key={m}
+                onClick={() => setModule(m)}
+                className={`px-3 py-1 text-xs font-medium transition-colors ${
+                  module === m
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                {t(`logs_module_${m}`)}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-gray-900">{t('logs_title')}</h1>
+            {loading && (
+              <span className="animate-spin inline-block w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full" aria-label="loading" />
+            )}
+            {totalProcessing > 0 && (
+              <span className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
+                <span className="animate-spin inline-block w-2.5 h-2.5 border-2 border-blue-500 border-t-transparent rounded-full" />
+                {totalProcessing} processing
+              </span>
+            )}
+          </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 mt-1">
           <button
             onClick={() => exportCSV(data.items)}
             className="px-3 py-1.5 text-xs border border-gray-300 rounded hover:bg-gray-50"
@@ -269,8 +347,8 @@ export default function LogsPage() {
           <label className="block text-xs text-gray-500 mb-1">Search</label>
           <input
             type="text"
-            value={q}
-            onChange={(e) => { setQ(e.target.value); setPage(1); }}
+            value={qInput}
+            onChange={(e) => setQInput(e.target.value)}
             placeholder={t('logs_search_placeholder')}
             className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 w-48"
           />
@@ -300,13 +378,13 @@ export default function LogsPage() {
               <button
                 key={s}
                 onClick={() => { toggleStatus(s); setPage(1); }}
-                className={`px-2 py-1 text-xs rounded ${
+                className={`px-2 py-0.5 text-xs rounded-full font-medium transition-colors ${
                   statuses.includes(s)
                     ? 'bg-blue-500 text-white'
-                    : 'border border-gray-300 hover:bg-gray-50'
+                    : 'border border-gray-300 text-gray-600 hover:bg-gray-50'
                 }`}
               >
-                {s}
+                {STATUS_CHIP_LABELS[s] || s}
               </button>
             ))}
           </div>
@@ -315,12 +393,14 @@ export default function LogsPage() {
 
       {/* Grouped expandable list */}
       <div className="space-y-2">
-        {loading && data.items.length === 0 && (
-          <div className="bg-white rounded-xl shadow px-6 py-10 text-center text-gray-400">
+        {/* Show a subtle loading placeholder only on the very first fetch */}
+        {!initialLoadDone && loading && (
+          <div className="bg-white rounded-xl shadow px-6 py-8 text-center text-gray-400 flex items-center justify-center gap-2">
+            <span className="animate-spin inline-block w-4 h-4 border-2 border-gray-300 border-t-gray-500 rounded-full" />
             {t('logs_loading')}
           </div>
         )}
-        {!loading && data.items.length === 0 && (
+        {initialLoadDone && data.items.length === 0 && (
           <div className="bg-white rounded-xl shadow px-6 py-10 text-center text-gray-400">
             {t('logs_no_results')}
           </div>
@@ -474,3 +554,4 @@ export default function LogsPage() {
     </div>
   );
 }
+
