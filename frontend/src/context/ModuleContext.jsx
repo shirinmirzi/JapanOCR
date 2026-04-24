@@ -20,5 +20,9 @@ export function ModuleProvider({ children }) {
 }
 
 export function useModule() {
-  return useContext(ModuleContext);
+  const ctx = useContext(ModuleContext);
+  if (!ctx) {
+    throw new Error('useModule must be used within a ModuleProvider');
+  }
+  return ctx;
 }
