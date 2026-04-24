@@ -10,6 +10,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/config")
 
 _ALLOWED_EXTS = {".xlsx", ".xls", ".csv"}
+_MASTER_TABLES = {
+    "daily": "daily_invoice_master",
+    "monthly": "monthly_invoice_master",
+}
 
 
 def _parse_file(filename: str, content: bytes) -> list[dict]:
@@ -52,10 +56,10 @@ async def upload_master_data(
     _user: dict = Depends(get_current_user),
 ):
     """Replace all rows in the daily or monthly invoice master table."""
-    if master_type not in ("daily", "monthly"):
+    if master_type not in _MASTER_TABLES:
         raise HTTPException(status_code=400, detail="master_type must be 'daily' or 'monthly'.")
 
-    table = f"{master_type}_invoice_master"
+    table = _MASTER_TABLES[master_type]
     content = await file.read()
     rows = _parse_file(file.filename or "upload", content)
 
@@ -69,13 +73,19 @@ async def upload_master_data(
 
     with get_db_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(f"TRUNCATE TABLE {table}")  # noqa: S608
+            # table is sourced from the _MASTER_TABLES whitelist dict, not user input
+            truncate_sql = "TRUNCATE TABLE " + table
+            insert_sql = (
+                "INSERT INTO " + table
+                + " (customer_cd, route_label, extra) VALUES (%s, %s, %s)"
+            )
+            cur.execute(truncate_sql)
             for row in rows:
                 customer_cd = str(row.get(cd_key, "") or "").strip() if cd_key else None
                 route_label = str(row.get(label_key, "") or "").strip() if label_key else None
                 extra = {k: v for k, v in row.items() if k not in (cd_key, label_key)}
                 cur.execute(
-                    f"INSERT INTO {table} (customer_cd, route_label, extra) VALUES (%s, %s, %s)",  # noqa: S608
+                    insert_sql,
                     (customer_cd, route_label, extra or None),
                 )
 

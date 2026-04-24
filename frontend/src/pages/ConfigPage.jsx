@@ -96,7 +96,7 @@ function MasterUploadCard({ type, title, description }) {
               </div>
               <div>
                 <p className="text-sm font-medium text-green-800">{t('config_success')}</p>
-                {result.rows_imported != null && (
+                {result.rows_imported !== null && result.rows_imported !== undefined && (
                   <p className="text-xs text-green-700 mt-0.5">
                     {result.rows_imported} {t('config_rows_imported')}
                   </p>
