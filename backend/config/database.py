@@ -140,26 +140,6 @@ def init_database():
                 "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS order_number TEXT"
             )
 
-            # Master data tables
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS daily_invoice_master (
-                    id SERIAL PRIMARY KEY,
-                    customer_cd TEXT,
-                    route_label TEXT,
-                    extra JSONB,
-                    uploaded_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-                )
-            """)
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS monthly_invoice_master (
-                    id SERIAL PRIMARY KEY,
-                    customer_cd TEXT,
-                    route_label TEXT,
-                    extra JSONB,
-                    uploaded_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-                )
-            """)
-
             # Indexes for jobs
             cur.execute(
                 "CREATE INDEX IF NOT EXISTS idx_jobs_created_at "
@@ -193,6 +173,34 @@ def init_database():
                 "ON invoices (created_at)"
             )
             cur.execute("CREATE INDEX IF NOT EXISTS idx_invoices_user_id ON invoices (user_id)")
+
+            # Master data tables for invoice routing
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS daily_invoice_master (
+                    id SERIAL PRIMARY KEY,
+                    customer_cd TEXT NOT NULL,
+                    destination_cd TEXT NOT NULL,
+                    row_number INTEGER,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS monthly_invoice_master (
+                    id SERIAL PRIMARY KEY,
+                    customer_cd TEXT NOT NULL,
+                    destination_cd TEXT NOT NULL,
+                    row_number INTEGER,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                )
+            """)
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_daily_master_customer_cd "
+                "ON daily_invoice_master (customer_cd)"
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_monthly_master_customer_cd "
+                "ON monthly_invoice_master (customer_cd)"
+            )
 
             # GIN indexes on JSONB columns
             cur.execute(

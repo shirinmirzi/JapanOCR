@@ -2,62 +2,56 @@ import React, { useRef, useState } from 'react';
 import { uploadMasterData } from '../services/api';
 import { t } from '../i18n';
 
-const ACCEPT = '.xlsx,.xls,.csv';
+const MASTER_TYPES = [
+  { value: 'daily', labelKey: 'config_master_daily' },
+  { value: 'monthly', labelKey: 'config_master_monthly' },
+];
 
-function UploadIcon() {
-  return (
-    <svg className="w-8 h-8 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-    </svg>
-  );
-}
+const ACCEPTED_EXTENSIONS = ['.xlsx', '.xlsm', '.csv'];
 
-function CheckIcon() {
-  return (
-    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-    </svg>
-  );
-}
-
-function MasterUploadCard({ type, title, description }) {
-  const inputRef = useRef();
+export default function ConfigPage() {
+  const [masterType, setMasterType] = useState('daily');
   const [file, setFile] = useState(null);
-  const [dragging, setDragging] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  const fileInputRef = useRef(null);
 
-  const handleFile = (f) => {
-    if (!f) return;
-    const ext = f.name.toLowerCase().split('.').pop();
-    if (!['xlsx', 'xls', 'csv'].includes(ext)) {
-      setError('Only .xlsx, .xls, or .csv files are accepted.');
-      return;
-    }
-    setFile(f);
-    setError(null);
+  const handleFileChange = (e) => {
+    const selected = e.target.files[0] || null;
+    setFile(selected);
     setResult(null);
+    setError(null);
   };
 
   const handleDrop = (e) => {
     e.preventDefault();
-    setDragging(false);
-    handleFile(e.dataTransfer.files[0]);
+    const dropped = e.dataTransfer.files[0] || null;
+    setFile(dropped);
+    setResult(null);
+    setError(null);
   };
 
-  const handleUpload = async () => {
-    if (!file) return;
-    setLoading(true);
-    setError(null);
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!file) {
+      setError(t('config_no_file'));
+      return;
+    }
+    setUploading(true);
     setResult(null);
+    setError(null);
     try {
-      const data = await uploadMasterData(file, type);
+      const data = await uploadMasterData(masterType, file);
       setResult(data);
     } catch (err) {
-      setError(err?.response?.data?.detail || err.message || 'Upload failed.');
+      const detail =
+        err?.response?.data?.detail ||
+        err?.message ||
+        'Upload failed';
+      setError(detail);
     } finally {
-      setLoading(false);
+      setUploading(false);
     }
   };
 
@@ -65,168 +59,152 @@ function MasterUploadCard({ type, title, description }) {
     setFile(null);
     setResult(null);
     setError(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-      {/* Card header */}
-      <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-3">
-        <div
-          className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
-            type === 'daily' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'
-          }`}
-        >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 01-1.125-1.125M3.375 19.5h1.5C5.496 19.5 6 18.996 6 18.375m-3.75.125V5.625c0-.621.504-1.125 1.125-1.125H15a1.125 1.125 0 011.125 1.125v13.5m-12.75 0h12.75m0 0v-13.5M6 18.375V6m12.75 13.125v-1.5c0-.621-.504-1.125-1.125-1.125H12.75" />
-          </svg>
-        </div>
+    <div className="max-w-2xl mx-auto py-8 px-4">
+      <h1 className="text-2xl font-bold text-gray-800 mb-1">{t('config_title')}</h1>
+      <p className="text-sm text-gray-500 mb-6">{t('config_hint')}</p>
+
+      <form onSubmit={handleSubmit} className="space-y-5 bg-white rounded-xl border border-gray-200 p-6">
+        {/* Master type selector */}
         <div>
-          <h3 className="font-semibold text-gray-900 text-sm">{title}</h3>
-          <p className="text-xs text-gray-500 mt-0.5">{description}</p>
-        </div>
-      </div>
-
-      {/* Card body */}
-      <div className="p-6">
-        {result ? (
-          <div className="space-y-3">
-            <div className="flex items-start gap-3 p-4 bg-green-50 border border-green-200 rounded-lg">
-              <div className="w-6 h-6 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0 mt-0.5 text-white">
-                <CheckIcon />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-green-800">{t('config_success')}</p>
-                {result.rows_imported !== null && result.rows_imported !== undefined && (
-                  <p className="text-xs text-green-700 mt-0.5">
-                    {result.rows_imported} {t('config_rows_imported')}
-                  </p>
-                )}
-              </div>
-            </div>
-            <button
-              onClick={handleReset}
-              className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
-            >
-              ← Upload another file
-            </button>
+          <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
+            {t('config_master_type')}
+          </label>
+          <div className="inline-flex rounded-lg border border-gray-200 p-0.5 bg-gray-50 gap-1">
+            {MASTER_TYPES.map((mt) => (
+              <button
+                key={mt.value}
+                type="button"
+                onClick={() => { setMasterType(mt.value); setResult(null); setError(null); }}
+                className={`py-1.5 px-4 rounded-md text-sm font-medium transition-all ${
+                  masterType === mt.value
+                    ? 'bg-white text-gray-900 shadow-sm border border-gray-200'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {t(mt.labelKey)}
+              </button>
+            ))}
           </div>
-        ) : (
-          <>
-            {/* Drop zone */}
-            <div
-              className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${
-                dragging
-                  ? 'border-blue-400 bg-blue-50'
-                  : file
-                  ? 'border-green-400 bg-green-50'
-                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-              }`}
-              onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-              onDragLeave={() => setDragging(false)}
-              onDrop={handleDrop}
-              onClick={() => inputRef.current?.click()}
+        </div>
+
+        {/* File drop zone */}
+        <div
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={handleDrop}
+          onClick={() => fileInputRef.current && fileInputRef.current.click()}
+          className="cursor-pointer border-2 border-dashed border-gray-200 rounded-lg p-8 text-center hover:border-blue-400 hover:bg-blue-50/30 transition-colors"
+        >
+          {file ? (
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-gray-800 truncate">{file.name}</p>
+              <p className="text-xs text-gray-400">{(file.size / 1024).toFixed(1)} KB</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <svg
+                className="mx-auto h-10 w-10 text-gray-300"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.5}
+                  d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
+                />
+              </svg>
+              <p className="text-sm text-gray-500">{t('config_choose_file')}</p>
+              <p className="text-xs text-gray-400">{t('config_file_accepted')}</p>
+            </div>
+          )}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={ACCEPTED_EXTENSIONS.join(',')}
+            onChange={handleFileChange}
+            className="hidden"
+          />
+        </div>
+
+        {/* Buttons */}
+        <div className="flex gap-3">
+          <button
+            type="submit"
+            disabled={uploading || !file}
+            className="flex-1 py-2 px-4 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {uploading ? t('config_uploading') : t('config_upload_btn')}
+          </button>
+          {(file || result || error) && (
+            <button
+              type="button"
+              onClick={handleReset}
+              className="py-2 px-4 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
             >
-              <input
-                ref={inputRef}
-                type="file"
-                accept={ACCEPT}
-                className="hidden"
-                onChange={(e) => handleFile(e.target.files[0])}
-              />
-              {file ? (
-                <div className="flex flex-col items-center gap-2">
-                  <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
-                    <svg className="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                  </div>
-                  <p className="text-sm font-medium text-gray-900">{file.name}</p>
-                  <p className="text-xs text-gray-500">{(file.size / 1024).toFixed(1)} KB</p>
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); handleReset(); }}
-                    className="text-xs text-red-500 hover:text-red-700"
-                  >
-                    Remove
-                  </button>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center gap-2">
-                  <UploadIcon />
-                  <p className="text-sm text-gray-600">
-                    Drag &amp; drop or{' '}
-                    <span className="text-blue-600 font-medium">click to browse</span>
-                  </p>
-                  <p className="text-xs text-gray-400">.xlsx · .xls · .csv — UTF-8, Japanese OK</p>
-                </div>
-              )}
-            </div>
+              {t('config_reset')}
+            </button>
+          )}
+        </div>
+      </form>
 
-            {error && (
-              <div className="mt-3 flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                <svg className="w-4 h-4 mt-0.5 flex-shrink-0 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
-                </svg>
-                {error}
-              </div>
+      {/* Error */}
+      {error && (
+        <div className="mt-4 p-4 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      {/* Success result */}
+      {result && (
+        <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-5 space-y-3">
+          <p className="font-medium text-green-800">
+            ✓ {t('config_success')}
+          </p>
+          <div className="flex gap-4 text-sm text-green-700">
+            <span>
+              <strong>{result.inserted}</strong> {t('config_inserted')}
+            </span>
+            {result.skipped > 0 && (
+              <span>
+                <strong>{result.skipped}</strong> {t('config_skipped')}
+              </span>
             )}
+          </div>
 
-            <div className="mt-4 flex items-center gap-3">
-              <button
-                onClick={() => inputRef.current?.click()}
-                className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700 transition-colors"
-              >
-                {t('config_choose_file')}
-              </button>
-              <button
-                onClick={handleUpload}
-                disabled={!file || loading}
-                className="px-5 py-2 rounded-lg text-white text-sm font-medium transition-opacity disabled:opacity-40"
-                style={{ backgroundColor: !file || loading ? undefined : '#009DD0' }}
-              >
-                {loading ? t('config_uploading') : t('config_upload_btn')}
-              </button>
-              {loading && (
-                <span className="animate-spin inline-block w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full" />
-              )}
+          {result.invalid_rows && result.invalid_rows.length > 0 && (
+            <div>
+              <p className="text-sm font-medium text-red-700 mb-2">{t('config_invalid_rows')}</p>
+              <div className="overflow-x-auto">
+                <table className="text-xs w-full border-collapse">
+                  <thead>
+                    <tr className="bg-red-100 text-red-800">
+                      <th className="text-left px-3 py-1 border border-red-200">{t('config_row')}</th>
+                      <th className="text-left px-3 py-1 border border-red-200">{t('config_reason')}</th>
+                      <th className="text-left px-3 py-1 border border-red-200">customer_cd</th>
+                      <th className="text-left px-3 py-1 border border-red-200">destination_cd</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.invalid_rows.map((ir) => (
+                      <tr key={ir.row} className="bg-white">
+                        <td className="px-3 py-1 border border-red-100">{ir.row}</td>
+                        <td className="px-3 py-1 border border-red-100">{ir.reason}</td>
+                        <td className="px-3 py-1 border border-red-100">{ir.data?.customer_cd ?? ''}</td>
+                        <td className="px-3 py-1 border border-red-100">{ir.data?.destination_cd ?? ''}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-export default function ConfigPage() {
-  return (
-    <div>
-      {/* Page header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">{t('config_title')}</h1>
-        <p className="mt-1 text-sm text-gray-500">{t('config_subtitle')}</p>
-      </div>
-
-      {/* Info banner */}
-      <div className="flex items-start gap-3 p-4 mb-6 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
-        <svg className="w-4 h-4 mt-0.5 flex-shrink-0 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
-        </svg>
-        {t('config_hint')}
-      </div>
-
-      {/* Upload cards */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <MasterUploadCard
-          type="daily"
-          title={t('config_daily_title')}
-          description={t('config_daily_desc')}
-        />
-        <MasterUploadCard
-          type="monthly"
-          title={t('config_monthly_title')}
-          description={t('config_monthly_desc')}
-        />
-      </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
