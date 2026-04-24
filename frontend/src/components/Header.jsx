@@ -2,15 +2,19 @@ import React, { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useMsal } from '@azure/msal-react';
 import { useUser } from '../context/UserContext';
+import { useModule } from '../context/ModuleContext';
 import { clearDevLogin, isDevLogin } from '../services/api';
 import { t, setLang, getLang, availableLangs } from '../i18n';
 
 const HEADER_BG = '#002F45';
 const ACTIVE_COLOR = '#00A9CE';
 
+const MODULES = ['invoice', 'fax'];
+
 export default function Header() {
   const { instance } = useMsal();
   const { user = null } = useUser() || {};
+  const { module, setModule } = useModule();
   const navigate = useNavigate();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [lang, setLangState] = useState(getLang());
@@ -60,6 +64,22 @@ export default function Header() {
               </NavLink>
             ))}
           </nav>
+          {/* Module toggle */}
+          <div className="hidden md:flex rounded-lg overflow-hidden border border-white/20">
+            {MODULES.map((m) => (
+              <button
+                key={m}
+                onClick={() => setModule(m)}
+                className={`px-3 py-1 text-xs font-medium transition-colors ${
+                  module === m
+                    ? 'bg-white/20 text-white'
+                    : 'text-white/60 hover:text-white hover:bg-white/10'
+                }`}
+              >
+                {t(`logs_module_${m}`)}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="flex items-center gap-4">
