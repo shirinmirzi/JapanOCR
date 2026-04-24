@@ -39,6 +39,7 @@ export default function Header() {
     { to: '/upload', label: t('nav_upload') },
     { to: '/logs', label: t('nav_logs') },
     { to: '/dashboard', label: t('nav_dashboard') },
+    { to: '/config', label: t('nav_config') },
   ];
 
   return (
