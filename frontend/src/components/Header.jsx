@@ -154,9 +154,10 @@ export default function Header() {
                 onClick={() => setModule(m)}
                 className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide transition-all border-b-2 ${
                   module === m
-                    ? 'text-white border-[#00A9CE]'
+                    ? 'text-white'
                     : 'text-white/50 border-transparent hover:text-white/80 hover:border-white/20'
                 } ${idx > 0 ? 'ml-1' : ''}`}
+                style={module === m ? { borderColor: ACTIVE_COLOR } : undefined}
               >
                 {MODULE_ICONS[m]}
                 {t(`logs_module_${m}`)}
@@ -173,10 +174,11 @@ export default function Header() {
                 className={({ isActive }) =>
                   `px-3 py-2.5 text-xs font-medium tracking-wide transition-all border-b-2 ${
                     isActive
-                      ? 'text-white border-[#00A9CE]'
+                      ? 'text-white'
                       : 'text-white/60 border-transparent hover:text-white hover:border-white/30'
                   }`
                 }
+                style={({ isActive }) => isActive ? { borderColor: ACTIVE_COLOR } : undefined}
               >
                 {item.label}
               </NavLink>

@@ -2,6 +2,7 @@ import io
 import logging
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from psycopg2 import sql
 
 from config.database import get_db_connection
 from middleware.entra_auth import get_current_user
@@ -73,19 +74,19 @@ async def upload_master_data(
 
     with get_db_connection() as conn:
         with conn.cursor() as cur:
-            # table is sourced from the _MASTER_TABLES whitelist dict, not user input
-            truncate_sql = "TRUNCATE TABLE " + table
-            insert_sql = (
-                "INSERT INTO " + table
-                + " (customer_cd, route_label, extra) VALUES (%s, %s, %s)"
-            )
-            cur.execute(truncate_sql)
+            # Use psycopg2.sql.Identifier to safely compose the table name
+            # (table is sourced from the _MASTER_TABLES whitelist, never from user input)
+            table_ident = sql.Identifier(table)
+            cur.execute(sql.SQL("TRUNCATE TABLE {}").format(table_ident))
+            insert_stmt = sql.SQL(
+                "INSERT INTO {} (customer_cd, route_label, extra) VALUES (%s, %s, %s)"
+            ).format(table_ident)
             for row in rows:
                 customer_cd = str(row.get(cd_key, "") or "").strip() if cd_key else None
                 route_label = str(row.get(label_key, "") or "").strip() if label_key else None
                 extra = {k: v for k, v in row.items() if k not in (cd_key, label_key)}
                 cur.execute(
-                    insert_sql,
+                    insert_stmt,
                     (customer_cd, route_label, extra or None),
                 )
 
