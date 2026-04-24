@@ -41,6 +41,17 @@ const isFailed = (s) => !!s && ['error', 'failed', 'not_found', 'timeout'].inclu
 const isProcessing = (s) => !!s && ['processing', 'queued', 'pending'].includes(s);
 const isIncomplete = (s) => !!s && ['incomplete', 'partial', 'cancelled'].includes(s);
 
+// A "processing" log entry is considered actively running only if it was
+// created within the last 10 minutes. Entries older than that are likely
+// stuck (e.g. the backend crashed before writing a terminal status), and
+// should not keep the Logs page polling indefinitely.
+const STALE_PROCESSING_MS = 10 * 60 * 1000;
+const isActiveProcessing = (log) => {
+  if (!isProcessing(log.status)) return false;
+  if (!log.timestamp) return true;
+  return Date.now() - new Date(log.timestamp).getTime() < STALE_PROCESSING_MS;
+};
+
 const getDatePrefix = (timestamp) => (timestamp || '').slice(0, 10) || 'unknown';
 
 // Determine the dominant visual status for a group (drives left border color)
@@ -168,11 +179,13 @@ export default function LogsPage() {
     load();
   }, [load]);
 
-  // Auto-refresh every 3 s while processing entries are visible; the interval
-  // uses the ref so it always calls the latest load without being torn down on
-  // every data update.
+  // Auto-refresh every 3 s while actively processing entries are visible; the
+  // interval uses the ref so it always calls the latest load without being
+  // torn down on every data update. Entries older than STALE_PROCESSING_MS are
+  // considered stuck and do not trigger polling so the page does not spin
+  // forever for historical "processing" records left by crashed jobs.
   useEffect(() => {
-    const hasActive = data.items.some((l) => isProcessing(l.status));
+    const hasActive = data.items.some(isActiveProcessing);
     if (!hasActive) return;
     const id = setInterval(() => loadRef.current(true), 3000);
     return () => clearInterval(id);
