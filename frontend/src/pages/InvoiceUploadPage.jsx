@@ -278,13 +278,13 @@ const statusBadge = (status) => {
   const map = {
     done: 'bg-green-100 text-green-800',
     failed: 'bg-red-100 text-red-800',
-    cancelled: 'bg-gray-100 text-gray-600',
-    processing: 'bg-blue-100 text-blue-800',
-    queued: 'bg-yellow-100 text-yellow-800',
+    cancelled: 'bg-gray-100 text-gray-500',
+    processing: 'bg-indigo-100 text-indigo-700',
+    queued: 'bg-yellow-50 text-yellow-700 border border-yellow-200',
     partial: 'bg-orange-100 text-orange-800',
-    pending: 'bg-yellow-100 text-yellow-800',
+    pending: 'bg-yellow-50 text-yellow-700 border border-yellow-200',
   };
-  return map[status] || 'bg-gray-100 text-gray-600';
+  return map[status] || 'bg-gray-100 text-gray-500';
 };
 
 function buildRowsFromJob(job) {
@@ -519,24 +519,38 @@ function BulkUpload() {
                   <tr key={i} className="hover:bg-gray-50">
                     <td className="px-4 py-3 font-mono text-xs text-gray-700 max-w-xs truncate">{row.filename}</td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${statusBadge(row.status)}`}>
-                        {row.status === 'processing' ? (
-                          <span className="flex items-center gap-1">
-                            <span className="animate-spin inline-block w-2 h-2 border border-blue-500 border-t-transparent rounded-full" />
-                            {row.status}
-                          </span>
-                        ) : row.status}
-                      </span>
+                      {row.status === 'processing' ? (
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full font-medium ${statusBadge(row.status)}`}>
+                          <svg className="animate-spin w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                          </svg>
+                          {row.status}
+                        </span>
+                      ) : (
+                        <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${statusBadge(row.status)}`}>
+                          {row.status}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-gray-700">{row.invoice_number}</td>
                     <td className="px-4 py-3 font-mono text-xs text-blue-600 max-w-xs truncate">{row.renamed_filename}</td>
                     <td className="px-4 py-3">
-                      {row.output_folder !== '—' && (
-                        <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${row.output_folder === 'Error' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
+                      {row.output_folder === '—' ? (
+                        <span className="text-gray-400">—</span>
+                      ) : row.output_folder === 'DoNotSend' ? (
+                        <span className="inline-flex items-center px-2 py-0.5 text-xs rounded-full font-medium bg-amber-100 text-amber-800 border border-amber-200">
+                          🚫 DoNotSend
+                        </span>
+                      ) : row.output_folder === 'Error' ? (
+                        <span className="px-2 py-0.5 text-xs rounded-full font-medium bg-red-100 text-red-800">
+                          {row.output_folder}
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 text-xs rounded-full font-medium bg-green-100 text-green-800">
                           {row.output_folder}
                         </span>
                       )}
-                      {row.output_folder === '—' && <span className="text-gray-400">—</span>}
                     </td>
                   </tr>
                 ))}
