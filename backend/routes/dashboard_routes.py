@@ -121,6 +121,7 @@ async def get_dashboard_summary(
             "logs_total": logs_total,
             "by_status": by_status,
             "vendors": vendors,
+            "do_not_send": stats.get("do_not_send", 0),
         },
         "recent": {
             "jobs": recent_jobs,

@@ -223,7 +223,8 @@ Aggregate KPI metrics and recent-activity data.
     "jobs_total": 15,
     "logs_total": 240,
     "by_status": { "processed": 110, "error": 10 },
-    "vendors": [{ "vendor_name": "Acme", "count": 30 }]
+    "vendors": [{ "vendor_name": "Acme", "count": 30 }],
+    "do_not_send": 5
   },
   "recent": {
     "jobs": [...],
@@ -232,6 +233,11 @@ Aggregate KPI metrics and recent-activity data.
   }
 }
 ```
+
+`kpis.do_not_send` is the count of invoices whose `upload_folder` is `"DoNotSend"` — i.e.
+invoices that were routed away from customer delivery based on a master-table lookup.
+The dashboard surfaces this as a dedicated amber banner when the count is non-zero, and
+renders a `🚫 DoNotSend` badge in the Output column of the Recent Invoices table.
 
 ---
 
