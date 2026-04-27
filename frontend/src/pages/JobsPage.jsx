@@ -1,7 +1,29 @@
+/**
+ * Japan OCR Tool - Jobs Page
+ *
+ * Paginated view of all bulk-upload processing jobs. Displays per-job
+ * progress, status badges, and expandable file-level result details.
+ * Auto-refreshes while any job is in an active state.
+ *
+ * Key Features:
+ * - Job Table: Lists jobs with status badge, progress bar, and metadata
+ * - Auto Refresh: Polls every 15 s when queued or processing jobs exist
+ * - Expandable Rows: Click a row to reveal filenames and result JSON
+ * - Status Filter: Dropdown to narrow the list to a specific status
+ *
+ * Dependencies: services/api, i18n
+ * Author: SHIRIN MIRZI M K
+ */
 import React, { useState, useEffect, useCallback } from 'react';
 import { getJobsPaged } from '../services/api';
 import { t } from '../i18n';
 
+/**
+ * Returns a Tailwind CSS class string for a colored status badge pill.
+ *
+ * @param {string} status - Job status key (e.g. 'done', 'failed', 'queued')
+ * @returns {string} Tailwind bg+text class string for the given status
+ */
 const statusBadge = (status) => {
   const map = {
     done: 'bg-green-100 text-green-800',
@@ -14,6 +36,11 @@ const statusBadge = (status) => {
   return map[status] || 'bg-gray-100 text-gray-600';
 };
 
+/**
+ * Renders the jobs page with a paginated, filterable list of bulk-upload jobs.
+ *
+ * @returns {JSX.Element} Jobs table with status filter, pagination, and detail rows
+ */
 export default function JobsPage() {
   const [data, setData] = useState({ items: [], total: 0, total_pages: 1 });
   const [page, setPage] = useState(1);
