@@ -252,6 +252,7 @@ def get_dashboard_stats() -> dict:
             by_status: Mapping of status string to invoice count.
             vendors: List of up to 10 dicts (vendor_name, count) ordered
                 by count descending, excluding deleted and N/A records.
+            do_not_send: Count of invoices routed to the DoNotSend folder.
     """
     status_rows = execute_query(
         "SELECT status, COUNT(*) as count FROM invoices "
@@ -275,4 +276,10 @@ def get_dashboard_stats() -> dict:
         else []
     )
 
-    return {"by_status": by_status, "vendors": vendors}
+    do_not_send_rows = execute_query(
+        "SELECT COUNT(*) as count FROM invoices "
+        "WHERE upload_folder = 'DoNotSend' AND status != 'deleted'"
+    )
+    do_not_send = do_not_send_rows[0]["count"] if do_not_send_rows else 0
+
+    return {"by_status": by_status, "vendors": vendors, "do_not_send": do_not_send}

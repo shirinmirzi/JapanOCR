@@ -66,7 +66,7 @@ FastAPI Backend
 | Background thread for bulk upload | Keeps the HTTP response latency low; FastAPI's `BackgroundTasks` runs in the same process, avoiding worker-spawn overhead for small batches. |
 | Two-phase logging | `log_processing_start` captures the file at intake; `update_log_entry` records the outcome. This ensures every file has a terminal log state even if an exception escapes. |
 | Soft delete for invoices | Preserves audit trails; invoice records are flagged `deleted` rather than physically removed. |
-| DoNotSend routing | Non-numeric `destination_cd` values in the master table route the PDF to a quarantine folder instead of a customer destination. |
+| DoNotSend routing | Non-numeric `destination_cd` values in the master table route the PDF to a quarantine folder instead of a customer destination. The count of routed-away invoices is surfaced on the Dashboard as a dedicated amber KPI banner and as an output-folder badge (`🚫 DoNotSend`) in the Recent Invoices table. |
 | Local storage fallback | When no Azure connection string is set, files are written to `backend/storage_pdf/`. This makes local development work without cloud credentials. |
 
 ---
