@@ -290,11 +290,32 @@ const statusBadge = (status) => {
 function buildRowsFromJob(job) {
   if (!job) return [];
   const results = job.results || {};
-  return (job.filenames || []).map((filename) => {
+  const isRunning = !TERMINAL_STATUSES.has(job.status);
+  const processedCount = job.processed_count ?? 0;
+  return (job.filenames || []).map((filename, index) => {
     const r = results[filename];
+    let status;
+    if (r) {
+      status = r.status;
+    } else if (isRunning) {
+      // Partial results are written after each file completes.  Files
+      // without a result entry yet are either already processed (index
+      // below processedCount — rare race-condition fallback), currently
+      // being processed (at position processedCount), or still queued
+      // (after that index).
+      if (index < processedCount) {
+        status = 'done';
+      } else if (index === processedCount) {
+        status = 'processing';
+      } else {
+        status = 'pending';
+      }
+    } else {
+      status = job.status === 'done' ? 'done' : 'pending';
+    }
     return {
       filename,
-      status: r ? r.status : (job.status === 'done' ? 'done' : 'pending'),
+      status,
       invoice_number: r?.invoice_number || '—',
       renamed_filename: r?.renamed_filename || '—',
       output_folder: r?.output_folder || '—',
