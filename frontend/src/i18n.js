@@ -1,3 +1,17 @@
+/**
+ * Japan OCR Tool - Internationalisation (i18n)
+ *
+ * Lightweight translation utility supporting English and Japanese. The active
+ * language is persisted to localStorage so it survives page reloads.
+ *
+ * Key Features:
+ * - Translations: Bundled EN/JA string maps for all UI copy
+ * - Persistence: Active language stored in localStorage under the key 'lang'
+ * - Fallback: Falls back to English when a key is missing in the active lang
+ *
+ * Dependencies: None (no external i18n library)
+ * Author: SHIRIN MIRZI M K
+ */
 const translations = {
   en: {
     app_title: 'Japan OCR Tool',
@@ -177,16 +191,33 @@ const translations = {
 
 let currentLang = localStorage.getItem('lang') || 'en';
 
+/**
+ * Translates a key into the currently active language string.
+ *
+ * @param {string} key - Translation key (e.g. 'nav_upload')
+ * @returns {string} Translated string, falling back to EN then the raw key
+ */
 export const t = (key) => {
   const lang = translations[currentLang] || translations.en;
   return lang[key] || translations.en[key] || key;
 };
 
+/**
+ * Switches the active language and persists the choice to localStorage.
+ *
+ * @param {string} lang - Language code to activate (e.g. 'en' or 'ja')
+ * @returns {void}
+ */
 export const setLang = (lang) => {
   currentLang = lang;
   localStorage.setItem('lang', lang);
 };
 
+/**
+ * Returns the currently active language code.
+ *
+ * @returns {string} Active language code (e.g. 'en' or 'ja')
+ */
 export const getLang = () => currentLang;
 
 export const availableLangs = ['en', 'ja'];

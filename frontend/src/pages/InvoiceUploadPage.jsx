@@ -1,3 +1,19 @@
+/**
+ * Japan OCR Tool - Invoice Upload Page
+ *
+ * Primary page for submitting PDF invoices to the OCR processing pipeline.
+ * Supports both single-file and bulk (multi-file) upload modes with real-time
+ * job progress polling and extracted field display.
+ *
+ * Key Features:
+ * - Single Upload: Drag-and-drop or file-picker for one invoice at a time
+ * - Bulk Upload: Multi-file selection with per-file progress and status table
+ * - Job Polling: Polls bulk job status until all items reach a terminal state
+ * - Result Persistence: Caches last single-upload result in localStorage
+ *
+ * Dependencies: services/api, i18n, ImportantNotice component
+ * Author: SHIRIN MIRZI M K
+ */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ImportantNotice from '../components/ImportantNotice';

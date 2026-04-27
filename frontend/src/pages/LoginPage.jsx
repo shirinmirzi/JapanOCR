@@ -1,3 +1,18 @@
+/**
+ * Japan OCR Tool - Login Page
+ *
+ * Entry point for unauthenticated users. Initiates Microsoft Entra ID
+ * (MSAL) login redirect flow and optionally exposes a developer bypass
+ * login when running in dev mode or when VITE_ENABLE_DEV_LOGIN is set.
+ *
+ * Key Features:
+ * - MSAL Login: Redirects to Entra ID via loginRedirect on button click
+ * - Auto Redirect: Immediately navigates to /upload if already authenticated
+ * - Dev Mode: Reveals a Dev Login button when running locally
+ *
+ * Dependencies: @azure/msal-react, React Router, msalConfig, services/api, i18n
+ * Author: SHIRIN MIRZI M K
+ */
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useIsAuthenticated } from '@azure/msal-react';
@@ -6,6 +21,11 @@ import { loginRequest } from '../msalConfig';
 import { enableDevLogin, isDevLogin } from '../services/api';
 import { t } from '../i18n';
 
+/**
+ * Renders the Microsoft Entra ID login page with an optional dev-login bypass.
+ *
+ * @returns {JSX.Element} Full-page login screen with sign-in button
+ */
 export default function LoginPage() {
   const isAuthenticated = useIsAuthenticated();
   const navigate = useNavigate();

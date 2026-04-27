@@ -1,7 +1,29 @@
+/**
+ * Japan OCR Tool - Dashboard Page
+ *
+ * Displays aggregated KPI metrics, vendor bar chart, status distribution,
+ * and recent invoice/job activity. Polls the backend every 15 seconds and
+ * supports filtering by time range (1h / 24h / 7d / all).
+ *
+ * Key Features:
+ * - KPI Cards: Total invoices, processed, pending, failed, and success rate
+ * - Vendor Chart: Horizontal bar chart of top invoice vendors
+ * - Status Distribution: Breakdown of all invoice statuses
+ * - Auto Refresh: Polls every 15 s; manual refresh button also available
+ *
+ * Dependencies: services/api, i18n
+ * Author: SHIRIN MIRZI M K
+ */
 import React, { useState, useEffect, useCallback } from 'react';
 import { getDashboardSummary } from '../services/api';
 import { t } from '../i18n';
 
+/**
+ * Returns a Tailwind CSS class string for a coloured status badge pill.
+ *
+ * @param {string} status - Invoice/job status key (e.g. 'done', 'failed')
+ * @returns {string} Tailwind bg+text class string for the given status
+ */
 const statusBadge = (status) => {
   const map = {
     done: 'bg-green-100 text-green-800',
@@ -17,6 +39,15 @@ const statusBadge = (status) => {
   return map[status] || 'bg-gray-100 text-gray-600';
 };
 
+/**
+ * Displays a single KPI metric card with a label, primary value, and subtitle.
+ *
+ * @param {Object} props - Component properties
+ * @param {string} props.label - Metric label shown above the value
+ * @param {string|number} props.value - Primary metric value to display
+ * @param {string} [props.sub] - Optional subtitle shown below the value
+ * @returns {JSX.Element} Bordered metric card
+ */
 const KPI = ({ label, value, sub }) => (
   <div className="bg-white rounded-xl border border-gray-200 p-5">
     <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">{label}</p>
@@ -25,6 +56,11 @@ const KPI = ({ label, value, sub }) => (
   </div>
 );
 
+/**
+ * Renders the dashboard with KPI cards, vendor chart, and recent activity.
+ *
+ * @returns {JSX.Element} Dashboard page with auto-refreshing summary panels
+ */
 export default function DashboardPage() {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(false);
