@@ -1,3 +1,19 @@
+"""
+Japan OCR Tool - Dashboard Routes
+
+Aggregates KPI metrics and recent-activity data from the invoices, jobs,
+and logs tables into a single summary response for the dashboard UI.
+
+Key Features:
+- KPI counters: total invoices, jobs, and log entries (optionally filtered by date)
+- Per-status breakdown: invoice counts grouped by processing status
+- Recent activity: configurable-limit lists of recent jobs, invoices, and failures
+- Optional date filter: all queries accept a 'since' ISO timestamp parameter
+
+Dependencies: FastAPI, config.database, services.file_metadata_client, services.jobs
+Author: SHIRIN MIRZI M K
+"""
+
 import logging
 
 from fastapi import APIRouter, Depends, Query
@@ -19,6 +35,21 @@ async def get_dashboard_summary(
     since: str = Query(None),
     user: dict = Depends(get_current_user),
 ):
+    """
+    Aggregate KPI metrics and recent-activity records for the dashboard.
+
+    Args:
+        jobs_limit: Maximum number of recent jobs to return (1–50).
+        invoices_limit: Maximum number of recent invoices to return (1–50).
+        failures_limit: Maximum number of recent failure log entries (1–50).
+        since: Optional ISO timestamp; when supplied all counts and recent
+            lists are restricted to records created on or after this date.
+        user: Injected authenticated user; used for access control only.
+
+    Returns:
+        Dict with 'kpis' (invoices_total, jobs_total, logs_total,
+        by_status, vendors) and 'recent' (jobs, invoices, failures).
+    """
     stats = get_dashboard_stats()
     by_status = stats["by_status"]
     vendors = stats["vendors"]

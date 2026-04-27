@@ -1,3 +1,19 @@
+"""
+Japan OCR Tool - Azure Blob Storage Client
+
+Abstracts file storage behind a single interface that works both with Azure
+Blob Storage (production) and a local filesystem directory (development/testing).
+
+Key Features:
+- Transparent local mode: falls back to backend/storage_pdf/ when no
+  Azure connection string is configured
+- SAS URL generation: time-limited read-only URLs for secure file downloads
+- Lazy client init: Azure SDK imported and connected only on first use
+
+Dependencies: azure-storage-blob (optional; only needed in Azure mode)
+Author: SHIRIN MIRZI M K
+"""
+
 import logging
 import os
 from datetime import datetime, timedelta, timezone
@@ -13,20 +29,60 @@ LOCAL_STORAGE_BASE = os.path.join(
 
 
 class AzureStorageClient:
+    """
+    Storage abstraction supporting both Azure Blob Storage and local filesystem.
+
+    Attributes:
+        _client: Lazily initialised BlobServiceClient; None until first Azure call.
+        _connection_string: Azure Storage connection string from environment;
+            empty string signals local-filesystem mode.
+    """
+
     def __init__(self):
+        """
+        Initialise the client from environment configuration.
+
+        No network connection is made here; Azure SDK is imported and
+        connected lazily on the first upload or SAS generation call.
+        """
         self._client = None
         self._connection_string = os.environ.get("AZURE_STORAGE_CONNECTION_STRING", "")
 
     def _is_local(self) -> bool:
+        """
+        Return True when running in local-filesystem mode.
+
+        Returns:
+            True if no Azure connection string is configured, False otherwise.
+        """
         return not self._connection_string.strip()
 
     def _get_client(self):
+        """
+        Return the BlobServiceClient, initialising it on first access.
+
+        Returns:
+            azure.storage.blob.BlobServiceClient connected via the
+            AZURE_STORAGE_CONNECTION_STRING environment variable.
+        """
         if self._client is None:
             from azure.storage.blob import BlobServiceClient
             self._client = BlobServiceClient.from_connection_string(self._connection_string)
         return self._client
 
     def upload_file(self, file_content: bytes, blob_name: str) -> str:
+        """
+        Upload bytes to Azure Blob Storage or the local filesystem.
+
+        Args:
+            file_content: Raw bytes of the file to store.
+            blob_name: Relative path used as the blob name / local sub-path,
+                e.g. "executions/20250430_143022/ProcessedFiles/invoice.pdf".
+
+        Returns:
+            A "local://<absolute-path>" URI in local mode, or the public
+            Azure blob URL in Azure mode.
+        """
         if self._is_local():
             local_path = os.path.join(LOCAL_STORAGE_BASE, blob_name)
             os.makedirs(os.path.dirname(local_path), exist_ok=True)
@@ -34,7 +90,6 @@ class AzureStorageClient:
                 f.write(file_content)
             logger.info("Saved locally: %s", local_path)
             return f"local://{local_path}"
-        # Azure path
         client = self._get_client()
         container_client = client.get_container_client(CONTAINER_NAME)
         try:
@@ -46,6 +101,18 @@ class AzureStorageClient:
         return blob_client.url
 
     def generate_sas_url(self, blob_path: str, expiry_minutes: int = 60) -> str:
+        """
+        Generate a time-limited SAS download URL for a stored blob.
+
+        Args:
+            blob_path: Relative path of the blob within the container.
+            expiry_minutes: How long the SAS token remains valid; defaults
+                to 60 minutes.
+
+        Returns:
+            A "local://<absolute-path>" URI in local mode, or a full HTTPS
+            SAS URL in Azure mode valid for expiry_minutes.
+        """
         if self._is_local():
             local_path = os.path.join(LOCAL_STORAGE_BASE, blob_path)
             return f"local://{local_path}"
@@ -65,6 +132,16 @@ class AzureStorageClient:
         return f"https://{account_name}.blob.core.windows.net/{CONTAINER_NAME}/{blob_path}?{sas_token}"
 
     def file_exists(self, blob_name: str) -> bool:
+        """
+        Check whether a blob or local file exists without downloading it.
+
+        Args:
+            blob_name: Relative path of the blob to check.
+
+        Returns:
+            True if the file exists, False if it does not or if the check
+            raises an exception (treated as non-existent).
+        """
         if self._is_local():
             return os.path.exists(os.path.join(LOCAL_STORAGE_BASE, blob_name))
         try:

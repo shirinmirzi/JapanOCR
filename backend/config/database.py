@@ -1,3 +1,19 @@
+"""
+Japan OCR Tool - Database Configuration
+
+Manages the PostgreSQL connection pool and provides helpers for executing
+queries and writes. Also owns the schema migration logic that creates all
+application tables and indexes on first run.
+
+Key Features:
+- Connection pooling: thread-safe pool via psycopg2.pool.ThreadedConnectionPool
+- Schema management: idempotent CREATE TABLE / CREATE INDEX migrations
+- Query helpers: execute_query for SELECTs, execute_write for DML with RETURNING
+
+Dependencies: psycopg2
+Author: SHIRIN MIRZI M K
+"""
+
 import logging
 import os
 from contextlib import contextmanager
@@ -12,6 +28,13 @@ SCHEMA = os.environ.get("POSTGRES_SCHEMA", "public")
 
 
 def get_connection_pool():
+    """
+    Return the shared ThreadedConnectionPool, creating it on first call.
+
+    Returns:
+        psycopg2.pool.ThreadedConnectionPool configured from environment
+        variables (POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB, etc.).
+    """
     global _connection_pool
     if _connection_pool is None:
         _connection_pool = pool.ThreadedConnectionPool(
@@ -29,6 +52,11 @@ def get_connection_pool():
 
 
 def close_connection_pool():
+    """
+    Close all connections in the pool and reset the module-level reference.
+
+    Safe to call even if the pool was never initialised.
+    """
     global _connection_pool
     if _connection_pool:
         _connection_pool.closeall()
@@ -38,6 +66,15 @@ def close_connection_pool():
 
 @contextmanager
 def get_db_connection():
+    """
+    Context manager that yields an auto-committing database connection.
+
+    Automatically sets the search_path to the configured schema on each
+    checkout, commits on clean exit, and rolls back on exception.
+
+    Raises:
+        Exception: Re-raises any database or application error after rollback.
+    """
     conn_pool = get_connection_pool()
     conn = conn_pool.getconn()
     try:
@@ -53,6 +90,16 @@ def get_db_connection():
 
 
 def execute_query(sql: str, params=None):
+    """
+    Execute a SELECT statement and return all result rows.
+
+    Args:
+        sql: The SQL query string, using %s placeholders for parameters.
+        params: Optional sequence or mapping of query parameters.
+
+    Returns:
+        List of RealDictRow objects; each row behaves like a dict.
+    """
     with get_db_connection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(sql, params)
@@ -60,6 +107,18 @@ def execute_query(sql: str, params=None):
 
 
 def execute_write(sql: str, params=None):
+    """
+    Execute an INSERT, UPDATE, or DELETE statement.
+
+    Args:
+        sql: The SQL DML string, using %s placeholders for parameters.
+            Include a RETURNING clause to get back the affected row.
+        params: Optional sequence or mapping of statement parameters.
+
+    Returns:
+        The first row returned by a RETURNING clause as a RealDictRow,
+        or None when no rows are returned.
+    """
     with get_db_connection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(sql, params)
@@ -70,6 +129,13 @@ def execute_write(sql: str, params=None):
 
 
 def init_database():
+    """
+    Create all required tables, columns, and indexes if they do not exist.
+
+    Idempotent — safe to call on every application startup. ALTER TABLE
+    statements add missing columns to tables created before schema migrations
+    were introduced, ensuring backward compatibility.
+    """
     with get_db_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(f"CREATE SCHEMA IF NOT EXISTS {SCHEMA}")

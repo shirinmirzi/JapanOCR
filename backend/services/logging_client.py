@@ -1,3 +1,22 @@
+"""
+Japan OCR Tool - Processing Log Client
+
+Data-access layer for the logs table. Records the start and final outcome
+of every invoice processing attempt and exposes paginated, filtered log
+queries for the UI and diagnostics endpoints.
+
+Key Features:
+- Two-phase logging: log_processing_start creates a 'processing' entry;
+  update_log_entry updates it to 'success' or 'error' at completion
+- Module tagging: entries carry a module field so invoice and other
+  pipeline logs can be filtered independently
+- Diagnostics: timeout/error/success counts for operational monitoring
+- Backward compat: log_ocr_result alias preserved for older call sites
+
+Dependencies: psycopg2 (via config.database)
+Author: SHIRIN MIRZI M K
+"""
+
 import json
 import logging
 
@@ -18,6 +37,22 @@ def log_invoice_result(
     execution_folder: str = None,
     module: str = None,
 ):
+    """
+    Insert a terminal log entry for a completed invoice processing attempt.
+
+    Args:
+        filename: Original uploaded filename.
+        status: Final status string ("success", "error", "timeout", etc.).
+        message: Optional human-readable success or info message.
+        error: Optional error detail string when status indicates failure.
+        metadata: Optional dict of arbitrary extra fields merged into the
+            JSONB metadata column.
+        user_id: Username of the user who triggered the processing.
+        renamed_filename: Output filename after OCR-based renaming (daily only).
+        folder_name: Output folder name (e.g. "ProcessedFiles", "Error").
+        execution_folder: Batch execution folder (e.g. "20250430_143022").
+        module: Pipeline module tag (e.g. "invoice") for log filtering.
+    """
     merged_metadata = dict(metadata) if metadata else {}
     if renamed_filename is not None:
         merged_metadata["renamed_filename"] = renamed_filename
@@ -57,7 +92,19 @@ def log_processing_start(
     folder_name: str = None,
     module: str = None,
 ) -> int | None:
-    """Insert a 'processing' log entry and return its id for later update."""
+    """
+    Insert a 'processing' log entry and return its id for later update.
+
+    Args:
+        filename: Original uploaded filename being processed.
+        user_id: Username of the user who triggered the processing.
+        execution_folder: Batch execution folder (e.g. "20250430_143022").
+        folder_name: Target output folder name, if known at start time.
+        module: Pipeline module tag (e.g. "invoice") for log filtering.
+
+    Returns:
+        Integer primary key of the new log row, or None when the insert fails.
+    """
     merged_metadata = {}
     if folder_name is not None:
         merged_metadata["folder_name"] = folder_name
@@ -94,7 +141,22 @@ def update_log_entry(
     renamed_filename: str = None,
     folder_name: str = None,
 ):
-    """Update an existing log entry's status and metadata in place."""
+    """
+    Update an existing log entry's status and metadata in place.
+
+    Merges the new values into the existing JSONB metadata rather than
+    replacing it, so fields written at start time (e.g. execution_folder)
+    are preserved in the final log record.
+
+    Args:
+        log_id: Primary key of the log row to update, as returned by
+            log_processing_start.
+        status: Terminal status string ("success" or "error").
+        message: Optional success or info message.
+        error: Optional error detail string.
+        renamed_filename: Output filename after OCR-based renaming.
+        folder_name: Output folder name written into metadata.
+    """
     if log_id is None:
         return
     try:
@@ -145,6 +207,28 @@ def get_logs_paged(
     source: str = None,
     module: str = None,
 ) -> dict:
+    """
+    Return a paginated, filtered list of log entries.
+
+    Args:
+        page: 1-based page number.
+        page_size: Maximum records per page.
+        status: Exact status to filter on; mutually exclusive with statuses.
+        statuses: List of status values to match with SQL IN (...).
+        q: Free-text search across filename, message, and metadata text.
+        since: ISO timestamp lower bound on the log timestamp (inclusive).
+        until: ISO timestamp upper bound on the log timestamp (inclusive).
+        sort_by: Column to sort by; defaults to "timestamp".
+        sort_dir: "asc" or "desc"; defaults to "desc".
+        user_id: When provided, only logs for this user are returned.
+        source: Filters on metadata->>'source' or metadata->>'module'.
+        module: Module tag filter; "invoice" also includes legacy entries
+            that predate module tagging.
+
+    Returns:
+        Dict with keys: items (list of log dicts with flattened renamed_filename,
+        folder_name, and execution_folder), total, page, page_size, total_pages.
+    """
     allowed_sort = {"timestamp", "filename", "status"}
     if sort_by not in allowed_sort:
         sort_by = "timestamp"
@@ -229,6 +313,16 @@ def get_logs_paged(
 
 
 def get_logs_db(limit: int = 100, user_id: str = None) -> list:
+    """
+    Return the most recent log entries without pagination.
+
+    Args:
+        limit: Maximum number of entries to return; defaults to 100.
+        user_id: When provided, only logs for this user are returned.
+
+    Returns:
+        List of log dicts ordered by timestamp descending.
+    """
     if user_id:
         rows = execute_query(
             "SELECT * FROM logs WHERE user_id = %s ORDER BY timestamp DESC LIMIT %s",
@@ -243,6 +337,13 @@ def get_logs_db(limit: int = 100, user_id: str = None) -> list:
 
 
 def get_timeout_diagnostics() -> dict:
+    """
+    Return aggregated status counts from the logs table for diagnostics.
+
+    Returns:
+        Dict with keys: timeout_count, error_count, success_count, total,
+        and last_entry (timestamp of the most recent log row).
+    """
     rows = execute_query(
         """
         SELECT

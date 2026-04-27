@@ -1,3 +1,17 @@
+"""
+Japan OCR Tool - Logs Routes
+
+Exposes REST endpoints for querying processing log entries and retrieving
+timeout/error diagnostic aggregates.
+
+Key Features:
+- GET /logs/db/paged: paginated log listing with rich filter options
+- GET /logs/diagnostics/timeouts: aggregated counts for operational monitoring
+
+Dependencies: FastAPI, services.logging_client
+Author: SHIRIN MIRZI M K
+"""
+
 import logging
 
 from fastapi import APIRouter, Depends, Query
@@ -25,6 +39,14 @@ async def logs_paged(
     module: str = Query(None),
     user: dict = Depends(get_current_user),
 ):
+    """
+    Return a paginated, filtered list of processing log entries.
+
+    Returns:
+        Paginated response dict (items, total, page, page_size, total_pages).
+        Each item includes flattened renamed_filename, folder_name, and
+        execution_folder fields extracted from the JSONB metadata column.
+    """
     return get_logs_paged(
         page=page,
         page_size=page_size,
@@ -45,4 +67,11 @@ async def logs_paged(
 async def timeout_diagnostics(
     user: dict = Depends(get_current_user),
 ):
+    """
+    Return aggregated timeout, error, and success counts from the logs table.
+
+    Returns:
+        Dict with timeout_count, error_count, success_count, total, and
+        last_entry timestamp.
+    """
     return get_timeout_diagnostics()

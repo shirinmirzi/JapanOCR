@@ -1,3 +1,20 @@
+"""
+Japan OCR Tool - Invoice Metadata Client
+
+Data-access layer for the invoices table. Provides paginated listing,
+single-record retrieval, creation, status updates, soft deletion, and
+aggregated dashboard statistics.
+
+Key Features:
+- Paginated queries: configurable page size with total-count metadata
+- Soft delete: marks records as 'deleted' rather than removing them
+- Dashboard stats: per-status counts and top-10 vendor aggregations
+- Flexible filtering: search by vendor, invoice number, status, date range
+
+Dependencies: psycopg2 (via config.database)
+Author: SHIRIN MIRZI M K
+"""
+
 import json
 import logging
 
@@ -18,6 +35,26 @@ def get_invoices_paged(
     sort_by: str = "created_at",
     sort_dir: str = "desc",
 ) -> dict:
+    """
+    Return a paginated, filtered list of non-deleted invoice records.
+
+    Args:
+        page: 1-based page number.
+        page_size: Maximum records per page.
+        q: Free-text search applied to vendor_name, invoice_number,
+            and filename (case-insensitive ILIKE).
+        vendor_name: Optional vendor name filter (partial match).
+        invoice_number: Optional invoice number filter (partial match).
+        status: Exact status value to filter on (e.g. "processed").
+        since: ISO timestamp lower bound on created_at (inclusive).
+        until: ISO timestamp upper bound on created_at (inclusive).
+        sort_by: Column name to sort by; defaults to "created_at".
+        sort_dir: "asc" or "desc" sort direction; defaults to "desc".
+
+    Returns:
+        Dict with keys: items (list of invoice dicts), total, page,
+        page_size, and total_pages.
+    """
     allowed_sort = {
         "created_at",
         "vendor_name",
@@ -80,6 +117,15 @@ def get_invoices_paged(
 
 
 def get_invoice_by_id(invoice_id: int) -> dict:
+    """
+    Fetch a single invoice record by its primary key.
+
+    Args:
+        invoice_id: Integer primary key of the invoice row.
+
+    Returns:
+        Invoice record as a dict, or None when no row matches.
+    """
     rows = execute_query("SELECT * FROM invoices WHERE id = %s", (invoice_id,))
     if rows:
         return dict(rows[0])
@@ -87,6 +133,15 @@ def get_invoice_by_id(invoice_id: int) -> dict:
 
 
 def get_invoices_by_job(job_id: str) -> list:
+    """
+    Return all invoice records associated with a given job, ordered by id.
+
+    Args:
+        job_id: UUID string of the parent job.
+
+    Returns:
+        List of invoice dicts; empty list when no records match.
+    """
     rows = execute_query(
         "SELECT * FROM invoices WHERE job_id = %s ORDER BY id",
         (job_id,),
@@ -103,6 +158,23 @@ def create_invoice(
     upload_folder: str,
     user_id: str = None,
 ) -> dict:
+    """
+    Insert a new invoice record and return the created row.
+
+    Args:
+        job_id: UUID of the parent bulk-upload job (may be None for single
+            uploads not associated with a job).
+        filename: Original uploaded filename.
+        invoice_data: Dict of extracted fields (invoice_number, vendor_name,
+            line_items, etc.) as returned by extract_invoice_data.
+        blob_url: Public URL or local URI where the PDF is stored.
+        blob_path: Relative blob path used for SAS URL generation.
+        upload_folder: Logical folder path recorded for UI display.
+        user_id: Username of the uploading user, or None.
+
+    Returns:
+        The newly created invoice row as a dict, or an empty dict on failure.
+    """
     row = execute_write(
         """
         INSERT INTO invoices (
@@ -145,6 +217,13 @@ def create_invoice(
 
 
 def update_invoice_status(invoice_id: int, status: str):
+    """
+    Update the status column of an existing invoice record.
+
+    Args:
+        invoice_id: Integer primary key of the invoice to update.
+        status: New status string (e.g. "processed", "error").
+    """
     execute_write(
         "UPDATE invoices SET status = %s WHERE id = %s",
         (status, invoice_id),
@@ -152,6 +231,12 @@ def update_invoice_status(invoice_id: int, status: str):
 
 
 def soft_delete_invoice(invoice_id: int):
+    """
+    Mark an invoice as deleted without removing the row from the database.
+
+    Args:
+        invoice_id: Integer primary key of the invoice to soft-delete.
+    """
     execute_write(
         "UPDATE invoices SET status = 'deleted' WHERE id = %s",
         (invoice_id,),
@@ -159,6 +244,15 @@ def soft_delete_invoice(invoice_id: int):
 
 
 def get_dashboard_stats() -> dict:
+    """
+    Compute aggregated statistics used by the dashboard KPI panel.
+
+    Returns:
+        Dict with keys:
+            by_status: Mapping of status string to invoice count.
+            vendors: List of up to 10 dicts (vendor_name, count) ordered
+                by count descending, excluding deleted and N/A records.
+    """
     status_rows = execute_query(
         "SELECT status, COUNT(*) as count FROM invoices "
         "WHERE status != 'deleted' GROUP BY status"

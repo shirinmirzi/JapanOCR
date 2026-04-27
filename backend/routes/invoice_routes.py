@@ -1,3 +1,21 @@
+"""
+Japan OCR Tool - Invoice Processing Routes
+
+Handles single and bulk PDF invoice uploads, orchestrates OCR analysis via
+DocWise, routes processed files to the correct output folder, and exposes
+CRUD endpoints for the invoice records.
+
+Key Features:
+- Single upload: synchronous OCR + Azure upload, result returned immediately
+- Bulk upload: files queued in a background task, progress tracked via job_id
+- Routing logic: master-table lookup maps customer codes to destination folders
+- DoNotSend handling: non-numeric destination codes route to a quarantine folder
+- Soft delete: invoice records are flagged 'deleted', not physically removed
+
+Dependencies: FastAPI, psycopg2, azure-storage-blob, services.*
+Author: SHIRIN MIRZI M K
+"""
+
 import contextlib
 import logging
 import os
@@ -35,6 +53,12 @@ _MASTER_TABLE = {
 
 
 def _build_upload_folder() -> str:
+    """
+    Build a date-partitioned upload folder path for the current UTC date.
+
+    Returns:
+        Path string in the form "uploads/YYYY/MM/DD".
+    """
     now = datetime.now(timezone.utc)
     return f"uploads/{now.strftime('%Y/%m/%d')}"
 
@@ -107,6 +131,29 @@ async def _process_single_file(
     invoice_type: str = "daily",
     execution_folder: str = None,
 ) -> dict:
+    """
+    Run OCR on a single uploaded PDF and persist the result.
+
+    Uploads the file to Azure (or local storage), inserts an invoice record,
+    and writes a log entry capturing the outcome.
+
+    Args:
+        file: The uploaded PDF UploadFile object.
+        user_id: Username of the uploading user.
+        job_id: Optional parent job UUID for bulk-upload context.
+        invoice_type: "daily" or "monthly" — selects the OCR prompt and
+            field-mapping logic.
+        execution_folder: Batch folder name; generated from current UTC time
+            if not supplied.
+
+    Returns:
+        Dict of extracted invoice fields plus blob_url, blob_path,
+        renamed_filename, output_folder, execution_folder, and any error.
+
+    Raises:
+        Exception: Re-raises unexpected errors after updating the log entry
+            to 'error' so the log always reaches a terminal state.
+    """
     content = await file.read()
     filename = file.filename
 
@@ -228,6 +275,22 @@ async def _process_single_file(
 
 
 def _background_bulk_process(job_id: str, files_data: list, user_id: str, invoice_type: str = "daily", execution_folder: str = None):
+    """
+    Process a batch of pre-read PDF files in a background thread.
+
+    Updates job status and writes partial results after each file so the
+    upload page can display live progress without polling the database.
+
+    Args:
+        job_id: UUID of the parent job record to update throughout.
+        files_data: List of dicts, each with 'filename' (str) and
+            'content' (bytes) keys.
+        user_id: Username of the uploading user, passed through to logs
+            and invoice records.
+        invoice_type: "daily" or "monthly" — selects OCR prompt and routing.
+        execution_folder: Shared execution folder name for all files in this
+            batch; generated from current UTC time if not supplied.
+    """
     if execution_folder is None:
         execution_folder = _build_execution_folder()
     set_job_status(job_id, "processing")
@@ -355,6 +418,21 @@ async def upload_invoice(
     user_date: str = Form(None),  # Accepted for backward compatibility but no longer used
     user: dict = Depends(get_current_user),
 ):
+    """
+    Process and store a single PDF invoice synchronously.
+
+    Args:
+        file: PDF file upload (must have a .pdf extension).
+        invoice_type: "daily" or "monthly"; defaults to "daily".
+        user_date: Ignored — accepted only for backward compatibility.
+        user: Injected authenticated user.
+
+    Returns:
+        Dict of extracted invoice fields plus storage metadata.
+
+    Raises:
+        HTTPException: 400 for non-PDF uploads or invalid invoice_type.
+    """
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
     if invoice_type not in _VALID_INVOICE_TYPES:
@@ -373,6 +451,28 @@ async def bulk_upload_invoices(
     user_date: str = Form(None),  # Accepted for backward compatibility but no longer used
     user: dict = Depends(get_current_user),
 ):
+    """
+    Queue multiple PDF invoices for background OCR processing.
+
+    Files are read into memory immediately so the request body is consumed
+    before the background task runs. Processing status is tracked via the
+    returned job_id.
+
+    Args:
+        background_tasks: FastAPI BackgroundTasks injected by the framework.
+        files: One or more PDF files to process.
+        invoice_type: "daily" or "monthly"; defaults to "daily".
+        user_date: Ignored — accepted only for backward compatibility.
+        user: Injected authenticated user.
+
+    Returns:
+        Dict with job_id, accepted (file count), filenames, and
+        execution_folder.
+
+    Raises:
+        HTTPException: 400 when no files are supplied or invoice_type is
+            invalid.
+    """
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
     if invoice_type not in _VALID_INVOICE_TYPES:
@@ -413,6 +513,12 @@ async def get_invoices_paged_route(
     sort_dir: str = Query("desc"),
     user: dict = Depends(get_current_user),
 ):
+    """
+    Return a paginated, filterable list of invoice records.
+
+    Returns:
+        Paginated response dict (items, total, page, page_size, total_pages).
+    """
     return get_invoices_paged(
         page=page,
         page_size=page_size,
@@ -432,6 +538,16 @@ async def get_invoices_for_job(
     job_id: str,
     user: dict = Depends(get_current_user),
 ):
+    """
+    Return all invoice records that belong to a given bulk-upload job.
+
+    Args:
+        job_id: UUID string of the parent job.
+        user: Injected authenticated user.
+
+    Returns:
+        List of invoice dicts ordered by id.
+    """
     return get_invoices_by_job(job_id)
 
 
@@ -440,6 +556,20 @@ async def get_invoice_download_url(
     invoice_id: int,
     user: dict = Depends(get_current_user),
 ):
+    """
+    Generate a time-limited download URL for the stored invoice PDF.
+
+    Args:
+        invoice_id: Integer primary key of the invoice.
+        user: Injected authenticated user.
+
+    Returns:
+        Dict with 'download_url' containing an Azure SAS URL or local URI.
+
+    Raises:
+        HTTPException: 404 when the invoice or its blob_path is not found;
+            500 when SAS URL generation fails.
+    """
     invoice = get_invoice_by_id(invoice_id)
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
@@ -458,6 +588,19 @@ async def get_invoice(
     invoice_id: int,
     user: dict = Depends(get_current_user),
 ):
+    """
+    Return a single invoice record by its primary key.
+
+    Args:
+        invoice_id: Integer primary key of the invoice.
+        user: Injected authenticated user.
+
+    Returns:
+        Invoice record as a dict.
+
+    Raises:
+        HTTPException: 404 when no matching invoice is found.
+    """
     invoice = get_invoice_by_id(invoice_id)
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
@@ -469,6 +612,19 @@ async def delete_invoice(
     invoice_id: int,
     user: dict = Depends(get_current_user),
 ):
+    """
+    Soft-delete an invoice record by marking its status as 'deleted'.
+
+    Args:
+        invoice_id: Integer primary key of the invoice to delete.
+        user: Injected authenticated user.
+
+    Returns:
+        Dict with 'deleted': True and the 'id' of the deleted record.
+
+    Raises:
+        HTTPException: 404 when no matching invoice is found.
+    """
     invoice = get_invoice_by_id(invoice_id)
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
