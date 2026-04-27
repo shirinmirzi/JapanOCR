@@ -1,3 +1,17 @@
+/**
+ * Japan OCR Tool - Root Application Component
+ *
+ * Composes the top-level provider tree and declares all client-side routes
+ * for the application.
+ *
+ * Key Features:
+ * - Routing: Defines all page routes via React Router v6
+ * - Auth Guard: Wraps protected routes with PrivateRoute
+ * - Providers: Injects MSAL, UserContext, and ModuleContext at the root
+ *
+ * Dependencies: React Router, @azure/msal-react, UserContext, ModuleContext
+ * Author: SHIRIN MIRZI M K
+ */
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { MsalProvider } from '@azure/msal-react';

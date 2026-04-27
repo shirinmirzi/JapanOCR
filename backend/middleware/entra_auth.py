@@ -1,3 +1,20 @@
+"""
+Japan OCR Tool - Azure Entra ID Authentication Middleware
+
+Validates Azure Entra ID (formerly Azure AD) JWT bearer tokens on every
+incoming HTTP request and populates request.state.user with the caller's
+identity claims.
+
+Key Features:
+- JWT decoding: extracts and decodes the payload segment without a network call
+- Middleware: integrates with FastAPI's ASGI middleware chain
+- Dev shortcuts: SKIP_AUTH and ALLOW_DEV_AUTH flags for local development
+- Public paths: /health and OpenAPI docs bypass authentication
+
+Dependencies: FastAPI
+Author: SHIRIN MIRZI M K
+"""
+
 import base64
 import json
 import logging
@@ -21,6 +38,19 @@ DEV_USER = {
 
 
 def _decode_jwt_payload(token: str) -> dict:
+    """
+    Decode and parse the payload segment of a JWT without signature verification.
+
+    Args:
+        token: A raw JWT string in the standard three-part dot-separated format.
+
+    Returns:
+        Parsed JSON payload as a plain dict.
+
+    Raises:
+        ValueError: When the token does not contain at least two dot-separated
+            parts or the payload is not valid base64-encoded JSON.
+    """
     parts = token.split(".")
     if len(parts) < 2:
         raise ValueError("Invalid JWT format")
@@ -33,6 +63,18 @@ def _decode_jwt_payload(token: str) -> dict:
 
 
 def verify_entra_token(token: str) -> dict:
+    """
+    Decode an Azure Entra ID JWT and return its claims.
+
+    Args:
+        token: Bearer token string extracted from the Authorization header.
+
+    Returns:
+        Decoded JWT claims as a dict (e.g. oid, preferred_username, name).
+
+    Raises:
+        ValueError: When decoding fails due to malformed token structure.
+    """
     try:
         claims = _decode_jwt_payload(token)
         return claims
@@ -41,6 +83,16 @@ def verify_entra_token(token: str) -> dict:
 
 
 def extract_user_from_claims(claims: dict) -> dict:
+    """
+    Build a normalised user profile dict from raw JWT claims.
+
+    Args:
+        claims: Decoded JWT payload as returned by verify_entra_token.
+
+    Returns:
+        Dict with keys: username, name, oid, and email. Falls back through
+        multiple claim fields to maximise compatibility across token formats.
+    """
     username = (
         claims.get("preferred_username")
         or claims.get("upn")
@@ -60,6 +112,19 @@ def extract_user_from_claims(claims: dict) -> dict:
 
 
 async def get_current_user(request: Request) -> dict:
+    """
+    FastAPI dependency that extracts and validates the caller's identity.
+
+    Args:
+        request: The incoming FastAPI Request object.
+
+    Returns:
+        Normalised user profile dict (username, name, oid, email).
+
+    Raises:
+        HTTPException: 401 when the Authorization header is missing, malformed,
+            or contains an invalid token.
+    """
     if SKIP_AUTH:
         return DEV_USER.copy()
 
@@ -83,6 +148,20 @@ async def get_current_user(request: Request) -> dict:
 
 
 async def entra_auth_middleware(request: Request, call_next):
+    """
+    ASGI middleware that enforces JWT authentication on protected routes.
+
+    Populates request.state.user on success so downstream handlers can read
+    the caller's identity without re-parsing the token.
+
+    Args:
+        request: The incoming ASGI request.
+        call_next: The next middleware or route handler in the chain.
+
+    Returns:
+        The response from the next handler, or a 401 JSONResponse when
+        authentication fails.
+    """
     if request.method == "OPTIONS":
         return await call_next(request)
 

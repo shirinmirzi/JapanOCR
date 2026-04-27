@@ -1,3 +1,19 @@
+"""
+Japan OCR Tool - Configuration Routes
+
+Handles bulk upload and retrieval of master data files used for invoice
+routing. Supports Excel (.xlsx/.xlsm) and CSV formats.
+
+Key Features:
+- Master upload: replaces all rows for a given type (daily/monthly) atomically
+- Master retrieval: returns current rows ordered by original source row number
+- Input validation: whitelist-based table selection, row-level validation
+- Security: table name composed via psycopg2.sql.Identifier to prevent injection
+
+Dependencies: FastAPI, psycopg2, openpyxl (optional, for Excel parsing)
+Author: SHIRIN MIRZI M K
+"""
+
 import csv
 import io
 import logging

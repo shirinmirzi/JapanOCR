@@ -1,3 +1,20 @@
+"""
+Japan OCR Tool - Application Entry Point
+
+Bootstraps the FastAPI application: configures logging, initialises the
+database connection pool on startup, registers CORS and authentication
+middleware, and mounts all API routers.
+
+Key Features:
+- Lifespan management: database init on startup, pool teardown on shutdown
+- CORS: origins controlled via CORS_ALLOWED_ORIGINS environment variable
+- Auth: Azure Entra ID JWT middleware applied globally to all HTTP routes
+- Health endpoint: lightweight liveness/readiness probe at GET /health
+
+Dependencies: FastAPI, psycopg2, python-dotenv, Azure SDK
+Author: SHIRIN MIRZI M K
+"""
+
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -26,6 +43,16 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """
+    Manage application startup and shutdown events.
+
+    Args:
+        app: The FastAPI application instance provided by the framework.
+
+    Raises:
+        Exception: Startup database errors are logged but do not abort launch,
+            allowing the process to start in a degraded state.
+    """
     try:
         init_database()
         logger.info("Database initialized")
@@ -64,6 +91,13 @@ app.include_router(config_router)
 
 @app.get("/health")
 async def health():
+    """
+    Report application liveness and database reachability.
+
+    Returns:
+        Dict with 'status' ("ok" or "degraded") and 'database'
+        ("connected" or an error string describing the failure).
+    """
     db_ok = False
     try:
         rows = execute_query("SELECT 1 AS ok")

@@ -1,3 +1,18 @@
+/**
+ * Japan OCR Tool - Config / Master Data Page
+ *
+ * Allows administrators to upload Excel or CSV master data files that map
+ * customer codes to destination codes. Supports daily and monthly master
+ * types and displays detailed row-level validation results.
+ *
+ * Key Features:
+ * - Master Type Toggle: Switches between daily and monthly master uploads
+ * - Drag-and-Drop: File drop zone for Excel (.xlsx, .xlsm) and CSV files
+ * - Validation Results: Shows inserted/skipped counts and invalid row details
+ *
+ * Dependencies: services/api, i18n
+ * Author: SHIRIN MIRZI M K
+ */
 import React, { useRef, useState } from 'react';
 import { uploadMasterData } from '../services/api';
 import { t } from '../i18n';
@@ -9,6 +24,11 @@ const MASTER_TYPES = [
 
 const ACCEPTED_EXTENSIONS = ['.xlsx', '.xlsm', '.csv'];
 
+/**
+ * Renders the master data upload form with drag-and-drop and result display.
+ *
+ * @returns {JSX.Element} Config page with file upload form and result feedback
+ */
 export default function ConfigPage() {
   const [masterType, setMasterType] = useState('daily');
   const [file, setFile] = useState(null);

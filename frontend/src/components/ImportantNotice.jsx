@@ -1,6 +1,24 @@
+/**
+ * Japan OCR Tool - Important Notice Banner
+ *
+ * Displays a dismissible amber alert at the top of pages to communicate
+ * processing guidelines and file-size constraints to the user.
+ *
+ * Key Features:
+ * - Dismissible: User can close the banner; state is local (not persisted)
+ * - i18n: Banner copy is drawn from the translation layer
+ *
+ * Dependencies: i18n
+ * Author: SHIRIN MIRZI M K
+ */
 import React, { useState } from 'react';
 import { t } from '../i18n';
 
+/**
+ * Renders a dismissible amber notice banner with processing guidelines.
+ *
+ * @returns {JSX.Element|null} The notice banner, or null once dismissed
+ */
 export default function ImportantNotice() {
   const [open, setOpen] = useState(true);
 

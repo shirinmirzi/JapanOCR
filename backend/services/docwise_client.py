@@ -1,3 +1,19 @@
+"""
+Japan OCR Tool - DocWise OCR Client
+
+Sends PDF documents to the DocWise API for OCR analysis and parses the
+structured text response into normalised invoice field dictionaries.
+
+Key Features:
+- Retry logic: exponential back-off with configurable MAX_ATTEMPTS
+- Prompt selection: separate prompts for daily and monthly invoice types
+- Response parsing: pipe-delimited field extraction with header-row filtering
+- Fallback parsing: LABEL: value format for daily invoices when pipe parsing fails
+
+Dependencies: requests
+Author: SHIRIN MIRZI M K
+"""
+
 import logging
 import os
 import time
@@ -43,6 +59,16 @@ TIMEOUT_SEC = float(os.environ.get("DOCWISE_TIMEOUT_SEC", 120))
 
 
 def pick_response_text(docwise_response: dict) -> str:
+    """
+    Extract the raw OCR text string from a DocWise API response.
+
+    Args:
+        docwise_response: The JSON response dict returned by the DocWise API.
+
+    Returns:
+        The extracted text string, or a string representation of the full
+        response dict when no known text field can be located.
+    """
     if not docwise_response:
         return ""
     # Try nested paths in order (DocWise returns text at detail.data.query_response_data.response)
@@ -77,6 +103,27 @@ def pick_response_text(docwise_response: dict) -> str:
 
 
 def analyze_document(file_obj, filename: str, query: str = None, invoice_type: str = "daily") -> dict:
+    """
+    Submit a PDF to the DocWise API and return the raw JSON response.
+
+    Retries up to MAX_ATTEMPTS times with exponential back-off on timeout
+    or transient request errors.
+
+    Args:
+        file_obj: A readable file-like object positioned at the start of
+            the PDF content.
+        filename: Original filename used as the multipart field name, which
+            the API includes in its response metadata.
+        query: Custom prompt string; when omitted the default prompt for
+            the given invoice_type is used.
+        invoice_type: "daily" or "monthly" — selects the built-in prompt.
+
+    Returns:
+        Parsed JSON response dict from the DocWise API.
+
+    Raises:
+        RuntimeError: After all retry attempts are exhausted.
+    """
     api_key = os.environ.get("DOCWISE_API_KEY", "")
     if query:
         prompt = query
@@ -147,6 +194,19 @@ def _is_header_line(parts: list) -> bool:
 
 
 def extract_invoice_data(docwise_response: dict, invoice_type: str = "daily") -> dict:
+    """
+    Parse a DocWise response into a structured invoice field dictionary.
+
+    Args:
+        docwise_response: Raw API response dict as returned by analyze_document.
+        invoice_type: "daily" or "monthly" — controls which fields are
+            extracted from the pipe-delimited model output.
+
+    Returns:
+        Dict containing invoice fields (customer_code, invoice_number,
+        invoice_date, vendor_name, etc.), a line_items list, and the
+        original raw_text string. Missing fields default to "N/A".
+    """
     raw_text = pick_response_text(docwise_response)
     lines = [line.strip() for line in raw_text.split("\n") if line.strip()]
 

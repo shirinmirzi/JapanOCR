@@ -1,3 +1,19 @@
+/**
+ * Japan OCR Tool - Logs Page
+ *
+ * Paginated, filterable view of all processing activity log entries. Groups
+ * log rows by original filename and supports per-file expansion, CSV export,
+ * status/date filtering, and optional auto-refresh.
+ *
+ * Key Features:
+ * - Grouped Rows: Log entries collapsed by filename with expandable details
+ * - Filters: Free-text search, date range, status multi-select, module filter
+ * - Auto Refresh: Configurable polling that stops once all entries are settled
+ * - CSV Export: Downloads the current filtered result set as a CSV file
+ *
+ * Dependencies: services/api, ModuleContext, i18n
+ * Author: SHIRIN MIRZI M K
+ */
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { getLogsPaged } from '../services/api';
 import { useModule } from '../context/ModuleContext';

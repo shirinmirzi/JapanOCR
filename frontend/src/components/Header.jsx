@@ -1,3 +1,20 @@
+/**
+ * Japan OCR Tool - Application Header
+ *
+ * Persistent top-of-page chrome containing the brand logo, module switcher,
+ * language toggle, user avatar with sign-out dropdown, and the navigation tab
+ * bar. Renders across all authenticated pages via MainLayout.
+ *
+ * Key Features:
+ * - Module Toggle: Switches between invoice and fax processing contexts
+ * - Language Switch: Toggles EN/JA with a full page reload to reapply strings
+ * - User Dropdown: Displays user name/email and provides sign-out action
+ * - Nav Bar: Active-indicator tab links for all main application routes
+ *
+ * Dependencies: React Router, @azure/msal-react, UserContext, ModuleContext,
+ *   services/api, i18n
+ * Author: SHIRIN MIRZI M K
+ */
 import React, { useEffect, useRef, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useMsal } from '@azure/msal-react';
@@ -25,6 +42,11 @@ const MODULE_ICONS = {
   ),
 };
 
+/**
+ * Renders the full application header with branding, navigation, and controls.
+ *
+ * @returns {JSX.Element} Two-row header: top bar with controls, bottom nav bar
+ */
 export default function Header() {
   const { instance } = useMsal();
   const { user = null } = useUser() || {};
@@ -83,7 +105,6 @@ export default function Header() {
             <span className="text-lg font-bold tracking-wide">{t('app_title')}</span>
           </div>
 
-          {/* Divider */}
           <div className="h-5 w-px bg-white/20" />
 
           {/* Module toggle – positioned next to the branding */}
@@ -108,7 +129,6 @@ export default function Header() {
 
         {/* Right side: lang + user */}
         <div className="flex items-center gap-3">
-          {/* Language switcher */}
           <div className="flex gap-0.5 bg-white/10 rounded-md p-0.5">
             {availableLangs.map((l) => (
               <button
@@ -125,7 +145,6 @@ export default function Header() {
             ))}
           </div>
 
-          {/* User avatar */}
           {user && (
             <div className="relative" ref={dropdownRef}>
               <button
@@ -169,7 +188,6 @@ export default function Header() {
       {/* Bottom bar: navigation tabs directly under the module selector */}
       <div style={{ backgroundColor: NAV_BG }} className="border-t border-white/10">
         <div className="w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-24 flex items-center justify-start">
-          {/* Navigation links */}
           <nav className="hidden md:flex items-center">
             {navItems.map((item) => (
               <NavLink
