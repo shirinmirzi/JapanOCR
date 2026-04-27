@@ -290,11 +290,46 @@ const statusBadge = (status) => {
 function buildRowsFromJob(job) {
   if (!job) return [];
   const results = job.results || {};
-  return (job.filenames || []).map((filename) => {
+  const isRunning = !TERMINAL_STATUSES.has(job.status);
+  const processedCount = job.processed_count ?? 0;
+  return (job.filenames || []).map((filename, index) => {
     const r = results[filename];
+    let status;
+    if (r) {
+      status = r.status;
+    } else if (isRunning) {
+      // Partial results are written after each file completes.  Files
+      // without a result entry yet are either currently being processed
+      // (at position processedCount) or still queued (after that index).
+      // The branch for index < processedCount is a defensive fallback for
+      // a brief window where increment_processed has run but the results
+      // write has not yet been reflected in the polled response.
+      if (index < processedCount) {
+        status = 'done';
+      } else if (index === processedCount) {
+        status = 'processing';
+      } else {
+        status = 'pending';
+      }
+    } else {
+      // Terminal state — files without a result entry were not reached
+      // (e.g. the job failed or was cancelled mid-run).  Reflect the
+      // overall job outcome so rows don't appear misleadingly as pending.
+      if (job.status === 'done') {
+        status = 'done';
+      } else if (job.status === 'failed') {
+        status = 'failed';
+      } else if (job.status === 'cancelled') {
+        status = 'cancelled';
+      } else {
+        // 'partial' or unknown terminal — unprocessed files were never
+        // reached; pending is the most accurate representation.
+        status = 'pending';
+      }
+    }
     return {
       filename,
-      status: r ? r.status : (job.status === 'done' ? 'done' : 'pending'),
+      status,
       invoice_number: r?.invoice_number || '—',
       renamed_filename: r?.renamed_filename || '—',
       output_folder: r?.output_folder || '—',

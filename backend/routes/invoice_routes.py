@@ -332,6 +332,9 @@ def _background_bulk_process(job_id: str, files_data: list, user_id: str, invoic
                 folder_name=output_folder,
             )
 
+        # Write partial results immediately so the upload page can show
+        # live per-file status updates while the job is still running.
+        set_job_results(job_id, results)
         increment_processed(job_id)
 
     failed = sum(1 for r in results.values() if r.get("status") == "failed")
