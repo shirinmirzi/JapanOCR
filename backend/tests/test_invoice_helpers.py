@@ -12,9 +12,11 @@ from unittest.mock import MagicMock, patch
 
 from routes.invoice_routes import (
     _build_execution_folder,
+    _build_monthly_renamed_filename,
     _build_renamed_filename,
     _build_upload_folder,
     _lookup_master,
+    _split_pdf_pages,
 )
 
 # =============================================================================
@@ -223,4 +225,102 @@ def test_routing_not_in_master_uses_pdf_code_and_processed_folder() -> None:
     # is_do_not_send=False guarantees the routing code leaves output_folder as
     # "ProcessedFiles" — neither Error nor DoNotSend is selected.
     assert not is_do_not_send, "unmatched master code must not trigger DoNotSend routing"
+
+
+# =============================================================================
+# _build_monthly_renamed_filename
+# =============================================================================
+
+
+def test_build_monthly_renamed_filename_standard_case() -> None:
+    name = _build_monthly_renamed_filename("172691", "8030066978", "2025/05/01")
+    assert name == "172691_8030066978_20250501請求明細書.pdf"
+
+
+def test_build_monthly_renamed_filename_hyphen_date() -> None:
+    name = _build_monthly_renamed_filename("172691", "8030066978", "2025-05-01")
+    assert name == "172691_8030066978_20250501請求明細書.pdf"
+
+
+def test_build_monthly_renamed_filename_na_date_uses_today() -> None:
+    name = _build_monthly_renamed_filename("172691", "8030066978", "N/A")
+    assert name.startswith("172691_8030066978_")
+    assert name.endswith("請求明細書.pdf")
+    date_segment = name.split("_")[2][:8]
+    assert len(date_segment) == 8
+    assert date_segment.isdigit()
+
+
+def test_build_monthly_renamed_filename_empty_date_uses_today() -> None:
+    name = _build_monthly_renamed_filename("111", "2222222222", "")
+    assert name.endswith("請求明細書.pdf")
+
+
+def test_build_monthly_renamed_filename_preserves_codes() -> None:
+    name = _build_monthly_renamed_filename("ABC", "1234567890", "2025/12/31")
+    assert name.startswith("ABC_1234567890_")
+    assert name.endswith("請求明細書.pdf")
+
+
+def test_build_monthly_renamed_filename_differs_from_daily() -> None:
+    """Monthly and daily filenames must use different fixed-text suffixes."""
+    monthly = _build_monthly_renamed_filename("172691", "8030066978", "2025/05/01")
+    daily = _build_renamed_filename("172691", "8030066978", "2025/05/01")
+    assert "請求明細書" in monthly
+    assert "納品書兼請求書" in daily
+    assert monthly != daily
+
+
+# =============================================================================
+# _split_pdf_pages
+# =============================================================================
+
+
+def _make_minimal_pdf(num_pages: int = 1) -> bytes:
+    """Create a minimal valid PDF with the given number of blank pages."""
+    import io
+
+    from pypdf import PdfWriter
+
+    writer = PdfWriter()
+    for _ in range(num_pages):
+        writer.add_blank_page(width=595, height=842)
+    buf = io.BytesIO()
+    writer.write(buf)
+    return buf.getvalue()
+
+
+def test_split_pdf_pages_single_page() -> None:
+    pdf_bytes = _make_minimal_pdf(1)
+    pages = _split_pdf_pages(pdf_bytes)
+    assert len(pages) == 1
+    assert isinstance(pages[0], bytes)
+    assert len(pages[0]) > 0
+
+
+def test_split_pdf_pages_multiple_pages() -> None:
+    pdf_bytes = _make_minimal_pdf(3)
+    pages = _split_pdf_pages(pdf_bytes)
+    assert len(pages) == 3
+
+
+def test_split_pdf_pages_each_result_is_valid_pdf() -> None:
+    """Every page returned by _split_pdf_pages must be a readable PDF."""
+    import io
+
+    from pypdf import PdfReader
+
+    pdf_bytes = _make_minimal_pdf(2)
+    pages = _split_pdf_pages(pdf_bytes)
+    for page_bytes in pages:
+        reader = PdfReader(io.BytesIO(page_bytes))
+        assert len(reader.pages) == 1
+
+
+def test_split_pdf_pages_invalid_input_raises() -> None:
+    """Non-PDF bytes must raise an exception (pypdf will reject it)."""
+    import pytest
+
+    with pytest.raises(Exception):
+        _split_pdf_pages(b"not a pdf")
 
