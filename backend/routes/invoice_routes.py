@@ -99,11 +99,19 @@ def _build_monthly_renamed_filename(
     The date segment is extracted as digits only; if fewer than 8 digits are
     present (e.g. when raw OCR labels leak into the field) today's date is
     used instead.
+
+    ``customer_code`` is sanitized to strip any characters that are invalid in
+    Windows filenames (defense-in-depth; callers should have already validated
+    the value before reaching this function).
     """
     date_str = re.sub(r"[^0-9]", "", invoice_date or "")[:8] if invoice_date and invoice_date != "N/A" else ""
     if len(date_str) < 8:
         date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
-    return f"{customer_code}_{coll_invoice_number}_{date_str}請求明細書.pdf"
+    # Strip Windows-invalid characters from customer_code as a final safety
+    # layer.  Under normal operation the caller has already validated
+    # customer_code, so this is purely defensive.
+    safe_code = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", customer_code)
+    return f"{safe_code}_{coll_invoice_number}_{date_str}請求明細書.pdf"
 
 
 def _split_pdf_pages(content: bytes) -> list[bytes]:
@@ -184,14 +192,15 @@ def _process_monthly_page(
         coll_invoice_no = page_invoice_data.get("invoice_number", "N/A")
         invoice_date = page_invoice_data.get("invoice_date", "N/A")
         # Only build a monthly filename when the extracted fields are valid.
-        # coll_invoice_no must be exactly 10 digits (per spec) and
-        # customer_code must contain no Windows-invalid characters so that
-        # raw OCR labels like "ITEM CODE: 8039440753" never reach the
-        # filesystem path.
+        # coll_invoice_no must be exactly 10 digits (per spec).
+        # customer_code must be purely numeric and 1–9 digits so that:
+        #   - raw OCR labels like "ITEM CODE: 8039440753" are rejected (contain
+        #     non-digit characters including the colon), and
+        #   - 10-digit item codes misidentified as customer codes are rejected
+        #     (10-digit numbers match the Coll Invoice No. pattern, not the
+        #     customer-code pattern which is typically 5–7 digits).
         _valid_coll_invoice = bool(re.fullmatch(r"\d{10}", coll_invoice_no))
-        _safe_customer_code = customer_code != "N/A" and not re.search(
-            r'[<>:"/\\|?*\x00-\x1f]', customer_code
-        )
+        _safe_customer_code = bool(re.fullmatch(r"\d{1,9}", customer_code))
         if _safe_customer_code and _valid_coll_invoice:
             effective_code, is_do_not_send = _lookup_master(customer_code, "monthly")
             if is_do_not_send:

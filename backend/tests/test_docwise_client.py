@@ -239,3 +239,30 @@ def test_extract_invoice_data_monthly_nine_digit_invoice_number_reset_to_na() ->
     result = extract_invoice_data(_make_response(text), invoice_type="monthly")
     assert result["customer_code"] == "N/A"
     assert result["invoice_number"] == "N/A"
+
+
+def test_extract_invoice_data_monthly_10digit_item_code_in_customer_position() -> None:
+    """When OCR places a 10-digit item code in position 0 (customer_code) and a
+    valid 10-digit Coll Invoice No. in position 1 (invoice_number), the parsed
+    customer_code is a 10-digit string.  This is the ambiguous case where a line
+    item row was mistaken for the header row.
+
+    extract_invoice_data cannot detect this ambiguity alone (both numbers are
+    10 digits), so it returns them as-is.  The downstream
+    _process_monthly_page guard (_safe_customer_code = re.fullmatch(r'\\d{1,9}',
+    customer_code)) is what rejects 10-digit customer codes and falls back to
+    the safe page-based filename.
+
+    This test documents the expected extract_invoice_data output so that the
+    routing guard assumption is explicit and verifiable.
+    """
+    # item code 8039440753 in position 0, valid Coll Invoice No. in position 1
+    text = "8039440753 | 8030066821 | 2025/05/01 | Vendor | Customer | 50000 | 5000 | 45000 | JPY"
+    result = extract_invoice_data(_make_response(text), invoice_type="monthly")
+    # Both positions are 10-digit → no reset in extract_invoice_data itself.
+    assert result["invoice_number"] == "8030066821"
+    # The customer_code here is 10 digits and must be rejected by the routing
+    # guard (_safe_customer_code) downstream; the value itself is predictable.
+    assert result["customer_code"] == "8039440753"
+    assert len(result["customer_code"]) == 10
+
