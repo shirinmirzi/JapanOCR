@@ -346,6 +346,21 @@ async def _process_single_file(
 
             page_results = []
             stem, ext = os.path.splitext(filename)
+            if not pages_content:
+                update_log_entry(
+                    log_id, "error",
+                    error="PDF has no pages",
+                    folder_name="Error",
+                )
+                return {
+                    "filename": filename,
+                    "output_folder": "Error",
+                    "execution_folder": execution_folder,
+                    "error": "PDF has no pages",
+                    "pages_processed": 0,
+                    "all_pages": [],
+                }
+
             for page_idx, page_content in enumerate(pages_content):
                 page_num = page_idx + 1
                 page_filename = f"{stem}_page{page_num}{ext}"
@@ -356,7 +371,7 @@ async def _process_single_file(
                 page_results.append(page_result)
 
             any_success = any(not r.get("error") for r in page_results)
-            first = page_results[0] if page_results else {}
+            first = page_results[0]
             overall_folder = first.get("output_folder", "ProcessedFiles")
             log_msg = (
                 f"Monthly invoice: {len(page_results)} page(s) processed"
@@ -371,8 +386,28 @@ async def _process_single_file(
                 folder_name=overall_folder,
             )
             return {
-                **first,
+                "customer_code": first.get("customer_code", "N/A"),
+                "invoice_number": first.get("invoice_number", "N/A"),
+                "order_number": first.get("order_number", "N/A"),
+                "vendor_name": first.get("vendor_name", "N/A"),
+                "vendor_address": first.get("vendor_address", "N/A"),
+                "customer_name": first.get("customer_name", "N/A"),
+                "customer_address": first.get("customer_address", "N/A"),
+                "invoice_date": first.get("invoice_date", "N/A"),
+                "due_date": first.get("due_date", "N/A"),
+                "total_amount": first.get("total_amount", "N/A"),
+                "tax_amount": first.get("tax_amount", "N/A"),
+                "subtotal": first.get("subtotal", "N/A"),
+                "currency": first.get("currency", "N/A"),
+                "line_items": first.get("line_items", []),
+                "raw_text": first.get("raw_text", ""),
+                "id": first.get("id"),
+                "blob_url": first.get("blob_url"),
                 "filename": filename,
+                "renamed_filename": first.get("renamed_filename"),
+                "output_folder": first.get("output_folder", "ProcessedFiles"),
+                "execution_folder": execution_folder,
+                "blob_path": first.get("blob_path"),
                 "pages_processed": len(page_results),
                 "all_pages": page_results,
             }
@@ -539,6 +574,23 @@ def _background_bulk_process(job_id: str, files_data: list, user_id: str, invoic
 
             stem, ext = os.path.splitext(filename)
             page_results = []
+            if not pages_content:
+                update_log_entry(
+                    log_id, "error",
+                    error="PDF has no pages",
+                    folder_name="Error",
+                )
+                results[filename] = {
+                    "status": "failed",
+                    "error": "PDF has no pages",
+                    "renamed_filename": None,
+                    "output_folder": "Error",
+                    "pages_processed": 0,
+                }
+                set_job_results(job_id, results)
+                increment_processed(job_id)
+                continue
+
             for page_idx, page_content in enumerate(pages_content):
                 page_num = page_idx + 1
                 page_filename = f"{stem}_page{page_num}{ext}"
@@ -549,10 +601,14 @@ def _background_bulk_process(job_id: str, files_data: list, user_id: str, invoic
                 page_results.append(page_result)
 
             any_success = any(not r.get("error") for r in page_results)
-            first = page_results[0] if page_results else {}
+            first = page_results[0]
             results[filename] = {
                 "status": "done" if any_success else "failed",
-                **{k: v for k, v in first.items() if k not in ("error",)},
+                "invoice_number": first.get("invoice_number", "N/A"),
+                "vendor_name": first.get("vendor_name", "N/A"),
+                "customer_name": first.get("customer_name", "N/A"),
+                "invoice_date": first.get("invoice_date", "N/A"),
+                "total_amount": first.get("total_amount", "N/A"),
                 "renamed_filename": first.get("renamed_filename"),
                 "output_folder": first.get("output_folder", "ProcessedFiles"),
                 "pages_processed": len(page_results),
