@@ -171,6 +171,9 @@ function Chevron({ open }) {
   );
 }
 
+// How long after mount to keep polling even without active-processing entries
+const MOUNT_POLL_WINDOW_MS = 30 * 1000;
+
 export default function LogsPage() {
   // Read selected module from the global header toggle
   const { module } = useModule();
@@ -258,8 +261,6 @@ export default function LogsPage() {
   // single-upload scenario where a "processing" log entry may not be visible
   // in the DB the instant the user navigates to this page.
   const mountTimeRef = useRef(Date.now());
-  // How long after mount to keep polling even without active-processing entries
-  const MOUNT_POLL_WINDOW_MS = 30 * 1000;
 
   // Auto-refresh every 3 s while there are actively-processing entries OR
   // while the page was recently mounted (so a just-started single upload
@@ -339,57 +340,77 @@ export default function LogsPage() {
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4">
-        <div className="flex flex-wrap gap-3 items-end">
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Search</label>
-            <input
-              type="text"
-              value={qInput}
-              onChange={(e) => setQInput(e.target.value)}
-              placeholder={t('logs_search_placeholder')}
-              className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 w-48 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">{t('logs_filter_since')}</label>
-            <input
-              type="date"
-              value={since}
-              onChange={(e) => { setSince(e.target.value); setPage(1); }}
-              className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">{t('logs_filter_until')}</label>
-            <input
-              type="date"
-              value={until}
-              onChange={(e) => { setUntil(e.target.value); setPage(1); }}
-              className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400"
-            />
-          </div>
-          <div className="flex-1 min-w-0">
-            <label className="block text-xs font-medium text-gray-500 mb-1">{t('logs_filter_status')}</label>
-            <div className="flex flex-wrap gap-1">
-              {STATUS_OPTIONS.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => { toggleStatus(s); setPage(1); }}
-                  className={`px-2 py-0.5 text-xs rounded-full font-medium transition-colors ${
-                    statuses.includes(s)
-                      ? 'bg-blue-500 text-white'
-                      : 'border border-gray-200 text-gray-500 hover:bg-gray-100'
-                  }`}
-                >
-                  {STATUS_CHIP_LABELS[s] || s}
-                </button>
-              ))}
-            </div>
-          </div>
+      {/* Compact filter bar — inline strip instead of heavy card */}
+      <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 mb-4 flex flex-wrap gap-2 items-center">
+        <input
+          type="text"
+          value={qInput}
+          onChange={(e) => setQInput(e.target.value)}
+          placeholder={t('logs_search_placeholder')}
+          className="text-xs border border-gray-300 rounded-md px-2.5 py-1.5 w-40 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 bg-white"
+        />
+        <input
+          type="date"
+          value={since}
+          onChange={(e) => { setSince(e.target.value); setPage(1); }}
+          title={t('logs_filter_since')}
+          className="text-xs border border-gray-300 rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 bg-white"
+        />
+        <input
+          type="date"
+          value={until}
+          onChange={(e) => { setUntil(e.target.value); setPage(1); }}
+          title={t('logs_filter_until')}
+          className="text-xs border border-gray-300 rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 bg-white"
+        />
+        <span className="text-gray-300 hidden sm:inline">|</span>
+        <div className="flex flex-wrap gap-1">
+          {STATUS_OPTIONS.map((s) => (
+            <button
+              key={s}
+              onClick={() => { toggleStatus(s); setPage(1); }}
+              className={`px-2 py-0.5 text-xs rounded-full font-medium transition-colors ${
+                statuses.includes(s)
+                  ? 'bg-blue-500 text-white'
+                  : 'border border-gray-200 text-gray-500 hover:bg-gray-100 bg-white'
+              }`}
+            >
+              {STATUS_CHIP_LABELS[s] || s}
+            </button>
+          ))}
         </div>
+        {(q || since || until || statuses.length > 0) && (
+          <button
+            onClick={() => { setQInput(''); setQ(''); setSince(''); setUntil(''); setStatuses([]); setPage(1); }}
+            className="ml-auto text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded hover:bg-gray-100 transition-colors"
+          >
+            Clear
+          </button>
+        )}
       </div>
+
+      {/* Mini stats strip */}
+      {initialLoadDone && data.total > 0 && (
+        <div className="flex items-center gap-3 mb-3 px-1 flex-wrap">
+          <span className="text-xs font-medium text-gray-500">{data.total} entries</span>
+          {totalComplete > 0 && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-green-100 text-green-800 font-medium">
+              <span>✓</span> {totalComplete} done
+            </span>
+          )}
+          {totalProcessing > 0 && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-800 font-medium">
+              <span className="animate-spin inline-block w-2.5 h-2.5 border border-blue-600 border-t-transparent rounded-full" />
+              {totalProcessing} active
+            </span>
+          )}
+          {totalFailed > 0 && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-red-100 text-red-800 font-medium">
+              <span>✗</span> {totalFailed} failed
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Grouped expandable list */}
       <div className="space-y-2">
