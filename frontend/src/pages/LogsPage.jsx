@@ -400,7 +400,7 @@ export default function LogsPage() {
           )}
           {totalProcessing > 0 && (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-800 font-medium">
-              <span className="animate-spin inline-block w-2.5 h-2.5 border border-blue-600 border-t-transparent rounded-full" />
+              <span className="animate-spin inline-block w-2.5 h-2.5 border border-blue-600 border-t-transparent rounded-full" role="status" aria-label="Loading" />
               {totalProcessing} active
             </span>
           )}

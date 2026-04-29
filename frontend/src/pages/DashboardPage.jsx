@@ -259,7 +259,7 @@ export default function DashboardPage() {
   const processed = byStatus.processed || 0;
   const processing = byStatus.processing || 0;
   const pending = byStatus.pending || 0;
-  const failed = (byStatus.failed || 0) + (byStatus.error || 0);
+  const failed = byStatus.failed || 0;
   const doNotSend = kpis.do_not_send || 0;
   const successRate = totalInvoices > 0 ? Math.round((processed / totalInvoices) * 100) : 0;
 
@@ -310,7 +310,7 @@ export default function DashboardPage() {
         <KPI label="Total Invoices" value={totalInvoices} accent="blue" />
         <KPI label="Processed"      value={processed}     accent="green" />
         <KPI label="Processing"     value={processing}    accent="blue" sub={processing > 0 ? 'active' : undefined} />
-        <KPI label="🚫 DoNotSend"   value={doNotSend}     accent="amber" sub="routed away" />
+        <KPI label="DoNotSend"      value={doNotSend}     accent="amber" sub="routed away" />
         <KPI label="Pending"        value={pending}       accent="yellow" />
         <KPI label="Failed"         value={failed}        accent="red" />
         <KPI label="Success Rate"   value={`${successRate}%`} accent="indigo" />
