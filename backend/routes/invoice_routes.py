@@ -17,15 +17,26 @@ Author: SHIRIN MIRZI M K
 """
 
 import contextlib
+import io
 import logging
 import os
 import re
 import tempfile
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+)
 from psycopg2 import sql
 from psycopg2.extras import RealDictCursor
+from pypdf import PdfReader, PdfWriter
 
 from config.database import get_db_connection
 from middleware.entra_auth import get_current_user
@@ -76,6 +87,43 @@ def _build_renamed_filename(customer_code: str, invoice_number: str, invoice_dat
     else:
         date_str = datetime.now(timezone.utc).strftime('%Y%m%d')
     return f"{customer_code}_{invoice_number}_{date_str}納品書兼請求書.pdf"
+
+
+def _build_monthly_renamed_filename(
+    customer_code: str, coll_invoice_number: str, invoice_date: str
+) -> str:
+    """Build renamed filename for monthly invoices.
+
+    Format: ``CustomerCode_CollInvoiceNo_YYYYMMDD請求明細書.pdf``
+    """
+    if invoice_date and invoice_date != "N/A":
+        date_str = invoice_date.replace("/", "").replace("-", "")
+    else:
+        date_str = datetime.now(timezone.utc).strftime('%Y%m%d')
+    return f"{customer_code}_{coll_invoice_number}_{date_str}請求明細書.pdf"
+
+
+def _split_pdf_pages(content: bytes) -> list[bytes]:
+    """Split a PDF into a list of single-page PDF byte strings.
+
+    Args:
+        content: Raw bytes of the source PDF file.
+
+    Returns:
+        List of byte strings, one per page of the original PDF.
+
+    Raises:
+        Exception: Propagates any pypdf error so callers can handle it.
+    """
+    reader = PdfReader(io.BytesIO(content))
+    pages = []
+    for page in reader.pages:
+        writer = PdfWriter()
+        writer.add_page(page)
+        buf = io.BytesIO()
+        writer.write(buf)
+        pages.append(buf.getvalue())
+    return pages
 
 
 def _lookup_master(customer_code: str, invoice_type: str) -> tuple[str, bool]:
@@ -134,8 +182,14 @@ async def _process_single_file(
     """
     Run OCR on a single uploaded PDF and persist the result.
 
-    Uploads the file to Azure (or local storage), inserts an invoice record,
-    and writes a log entry capturing the outcome.
+    For daily invoices the whole file is sent to DocWise, the extracted fields
+    are used to build a renamed filename, and the file is uploaded to Azure.
+
+    For monthly invoices the PDF is first split into individual pages. Each
+    page is OCR'd separately to extract the Customer Code, Coll Invoice No.,
+    and Invoice Date; each page is renamed as
+    ``CustomerCode_CollInvoiceNo_YYYYMMDD請求明細書.pdf`` and uploaded to
+    ``ProcessedFiles`` (or ``DoNotSend`` when the master lookup indicates it).
 
     Args:
         file: The uploaded PDF UploadFile object.
@@ -149,6 +203,8 @@ async def _process_single_file(
     Returns:
         Dict of extracted invoice fields plus blob_url, blob_path,
         renamed_filename, output_folder, execution_folder, and any error.
+        Monthly invoices also include ``pages_processed`` (int) and
+        ``all_pages`` (list of per-page result dicts).
 
     Raises:
         Exception: Re-raises unexpected errors after updating the log entry
@@ -168,6 +224,126 @@ async def _process_single_file(
     )
 
     try:
+        if invoice_type == "monthly":
+            # Monthly invoices: split PDF into individual pages, OCR each page,
+            # and produce one renamed output file per Coll Invoice No.
+            try:
+                pages_content = _split_pdf_pages(content)
+            except Exception as e:
+                logger.error("PDF split failed for %s: %s", filename, e)
+                update_log_entry(
+                    log_id, "error",
+                    error=f"PDF split failed: {e}",
+                    folder_name="Error",
+                )
+                return {
+                    "filename": filename,
+                    "output_folder": "Error",
+                    "execution_folder": execution_folder,
+                    "error": str(e),
+                    "pages_processed": 0,
+                    "all_pages": [],
+                }
+
+            page_results = []
+            stem, ext = os.path.splitext(filename)
+            for page_idx, page_content in enumerate(pages_content):
+                page_num = page_idx + 1
+                page_filename = f"{stem}_page{page_num}{ext}"
+
+                page_invoice_data: dict = {}
+                page_ocr_error = None
+                try:
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+                        tmp.write(page_content)
+                        page_tmp_path = tmp.name
+                    try:
+                        with open(page_tmp_path, "rb") as f:
+                            raw_response = analyze_document(
+                                f, page_filename, invoice_type="monthly"
+                            )
+                        page_invoice_data = extract_invoice_data(
+                            raw_response, invoice_type="monthly"
+                        )
+                    finally:
+                        with contextlib.suppress(Exception):
+                            os.unlink(page_tmp_path)
+                except Exception as e:
+                    logger.error("OCR failed for %s page %d: %s", filename, page_num, e)
+                    page_ocr_error = str(e)
+
+                page_output_folder = "ProcessedFiles"
+                page_renamed = None
+                if not page_ocr_error:
+                    customer_code = page_invoice_data.get("customer_code", "N/A")
+                    coll_invoice_no = page_invoice_data.get("invoice_number", "N/A")
+                    invoice_date = page_invoice_data.get("invoice_date", "N/A")
+                    if customer_code != "N/A" and coll_invoice_no != "N/A":
+                        effective_code, is_do_not_send = _lookup_master(customer_code, "monthly")
+                        if is_do_not_send:
+                            page_output_folder = _DO_NOT_SEND_FOLDER
+                        page_renamed = _build_monthly_renamed_filename(
+                            effective_code, coll_invoice_no, invoice_date
+                        )
+
+                page_dest = page_renamed if page_renamed else page_filename
+                page_blob_path = f"executions/{execution_folder}/{page_output_folder}/{page_dest}"
+                page_blob_url = None
+                try:
+                    page_blob_url = azure_storage_client.upload_file(page_content, page_blob_path)
+                except Exception as e:
+                    logger.warning(
+                        "Failed to upload monthly page %d of %s: %s", page_num, filename, e
+                    )
+
+                page_record = create_invoice(
+                    job_id=job_id,
+                    filename=page_filename,
+                    invoice_data=page_invoice_data,
+                    blob_url=page_blob_url,
+                    blob_path=page_blob_path,
+                    upload_folder=f"executions/{execution_folder}/{page_output_folder}",
+                    user_id=user_id,
+                )
+
+                page_result: dict = {
+                    **page_invoice_data,
+                    "id": page_record.get("id"),
+                    "blob_url": page_blob_url,
+                    "filename": page_filename,
+                    "renamed_filename": page_renamed,
+                    "output_folder": page_output_folder,
+                    "execution_folder": execution_folder,
+                    "blob_path": page_blob_path,
+                    "page_number": page_num,
+                }
+                if page_ocr_error:
+                    page_result["error"] = page_ocr_error
+                page_results.append(page_result)
+
+            any_success = any(not r.get("error") for r in page_results)
+            first = page_results[0] if page_results else {}
+            overall_folder = first.get("output_folder", "ProcessedFiles")
+            log_msg = (
+                f"Monthly invoice: {len(page_results)} page(s) processed"
+                if any_success else None
+            )
+            update_log_entry(
+                log_id,
+                "success" if any_success else "error",
+                message=log_msg,
+                error=None if any_success else "All monthly invoice pages failed OCR",
+                renamed_filename=first.get("renamed_filename"),
+                folder_name=overall_folder,
+            )
+            return {
+                **first,
+                "filename": filename,
+                "pages_processed": len(page_results),
+                "all_pages": page_results,
+            }
+
+        # Daily invoice: OCR the whole file and rename using the standard rule
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
             tmp.write(content)
             tmp_path = tmp.name
@@ -185,22 +361,21 @@ async def _process_single_file(
             with contextlib.suppress(Exception):
                 os.unlink(tmp_path)
 
-        # Determine output subfolder and renamed filename (daily only)
+        # Determine output subfolder and renamed filename
         renamed_filename = None
         output_folder = "ProcessedFiles"
-        if invoice_type == "daily":
-            customer_code = invoice_data.get("customer_code", "N/A")
-            invoice_number = invoice_data.get("invoice_number", "N/A")
-            invoice_date = invoice_data.get("invoice_date", "N/A")
-            if ocr_error or customer_code == "N/A" or invoice_number == "N/A":
-                output_folder = "Error"
-            else:
-                effective_code, is_do_not_send = _lookup_master(customer_code, invoice_type)
-                if is_do_not_send:
-                    output_folder = _DO_NOT_SEND_FOLDER
-                renamed_filename = _build_renamed_filename(
-                    effective_code, invoice_number, invoice_date
-                )
+        customer_code = invoice_data.get("customer_code", "N/A")
+        invoice_number = invoice_data.get("invoice_number", "N/A")
+        invoice_date = invoice_data.get("invoice_date", "N/A")
+        if ocr_error or customer_code == "N/A" or invoice_number == "N/A":
+            output_folder = "Error"
+        else:
+            effective_code, is_do_not_send = _lookup_master(customer_code, invoice_type)
+            if is_do_not_send:
+                output_folder = _DO_NOT_SEND_FOLDER
+            renamed_filename = _build_renamed_filename(
+                effective_code, invoice_number, invoice_date
+            )
 
         dest_name = renamed_filename if renamed_filename else filename
         blob_path = f"executions/{execution_folder}/{output_folder}/{dest_name}"
@@ -306,6 +481,128 @@ def _background_bulk_process(job_id: str, files_data: list, user_id: str, invoic
             module="invoice",
         )
 
+        if invoice_type == "monthly":
+            # Monthly: split PDF into pages, OCR each page individually.
+            try:
+                pages_content = _split_pdf_pages(content)
+            except Exception as e:
+                logger.error("Bulk PDF split failed for %s: %s", filename, e)
+                update_log_entry(
+                    log_id, "error",
+                    error=f"PDF split failed: {e}",
+                    folder_name="Error",
+                )
+                results[filename] = {
+                    "status": "failed",
+                    "error": str(e),
+                    "renamed_filename": None,
+                    "output_folder": "Error",
+                    "pages_processed": 0,
+                }
+                set_job_results(job_id, results)
+                increment_processed(job_id)
+                continue
+
+            stem, ext = os.path.splitext(filename)
+            page_results = []
+            for page_idx, page_content in enumerate(pages_content):
+                page_num = page_idx + 1
+                page_filename = f"{stem}_page{page_num}{ext}"
+
+                page_invoice_data: dict = {}
+                page_ocr_error = None
+                try:
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+                        tmp.write(page_content)
+                        page_tmp_path = tmp.name
+                    try:
+                        with open(page_tmp_path, "rb") as f:
+                            raw_response = analyze_document(
+                                f, page_filename, invoice_type="monthly"
+                            )
+                        page_invoice_data = extract_invoice_data(
+                            raw_response, invoice_type="monthly"
+                        )
+                    finally:
+                        with contextlib.suppress(Exception):
+                            os.unlink(page_tmp_path)
+                except Exception as e:
+                    logger.error("Bulk OCR failed for %s page %d: %s", filename, page_num, e)
+                    page_ocr_error = str(e)
+
+                page_output_folder = "ProcessedFiles"
+                page_renamed = None
+                if not page_ocr_error:
+                    customer_code = page_invoice_data.get("customer_code", "N/A")
+                    coll_invoice_no = page_invoice_data.get("invoice_number", "N/A")
+                    invoice_date = page_invoice_data.get("invoice_date", "N/A")
+                    if customer_code != "N/A" and coll_invoice_no != "N/A":
+                        effective_code, is_do_not_send = _lookup_master(customer_code, "monthly")
+                        if is_do_not_send:
+                            page_output_folder = _DO_NOT_SEND_FOLDER
+                        page_renamed = _build_monthly_renamed_filename(
+                            effective_code, coll_invoice_no, invoice_date
+                        )
+
+                page_dest = page_renamed if page_renamed else page_filename
+                page_blob_path = f"executions/{execution_folder}/{page_output_folder}/{page_dest}"
+                page_blob_url = None
+                try:
+                    page_blob_url = azure_storage_client.upload_file(page_content, page_blob_path)
+                except Exception as e:
+                    logger.warning(
+                        "Failed to upload monthly page %d of %s: %s", page_num, filename, e
+                    )
+
+                create_invoice(
+                    job_id=job_id,
+                    filename=page_filename,
+                    invoice_data=page_invoice_data,
+                    blob_url=page_blob_url,
+                    blob_path=page_blob_path,
+                    upload_folder=f"executions/{execution_folder}/{page_output_folder}",
+                    user_id=user_id,
+                )
+
+                page_entry: dict = {
+                    **page_invoice_data,
+                    "renamed_filename": page_renamed,
+                    "output_folder": page_output_folder,
+                }
+                if page_ocr_error:
+                    page_entry["error"] = page_ocr_error
+                page_results.append(page_entry)
+
+            any_success = any(not r.get("error") for r in page_results)
+            first = page_results[0] if page_results else {}
+            results[filename] = {
+                "status": "done" if any_success else "failed",
+                **{k: v for k, v in first.items() if k not in ("error",)},
+                "renamed_filename": first.get("renamed_filename"),
+                "output_folder": first.get("output_folder", "ProcessedFiles"),
+                "pages_processed": len(page_results),
+                "page_results": page_results,
+            }
+            if not any_success:
+                results[filename]["error"] = "All monthly invoice pages failed OCR"
+            bulk_log_msg = (
+                f"Monthly invoice: {len(page_results)} page(s) processed"
+                if any_success else None
+            )
+            update_log_entry(
+                log_id,
+                "success" if any_success else "error",
+                message=bulk_log_msg,
+                error=None if any_success else "All monthly invoice pages failed OCR",
+                renamed_filename=first.get("renamed_filename"),
+                folder_name=first.get("output_folder", "ProcessedFiles"),
+            )
+
+            set_job_results(job_id, results)
+            increment_processed(job_id)
+            continue
+
+        # Daily invoice: OCR the whole file and rename using the standard rule
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
             tmp.write(content)
             tmp_path = tmp.name
@@ -323,22 +620,21 @@ def _background_bulk_process(job_id: str, files_data: list, user_id: str, invoic
             with contextlib.suppress(Exception):
                 os.unlink(tmp_path)
 
-        # Determine output subfolder and renamed filename (daily only)
+        # Determine output subfolder and renamed filename
         renamed_filename = None
         output_folder = "ProcessedFiles"
-        if invoice_type == "daily":
-            customer_code = invoice_data.get("customer_code", "N/A")
-            invoice_number = invoice_data.get("invoice_number", "N/A")
-            invoice_date = invoice_data.get("invoice_date", "N/A")
-            if ocr_error or customer_code == "N/A" or invoice_number == "N/A":
-                output_folder = "Error"
-            else:
-                effective_code, is_do_not_send = _lookup_master(customer_code, invoice_type)
-                if is_do_not_send:
-                    output_folder = _DO_NOT_SEND_FOLDER
-                renamed_filename = _build_renamed_filename(
-                    effective_code, invoice_number, invoice_date
-                )
+        customer_code = invoice_data.get("customer_code", "N/A")
+        invoice_number = invoice_data.get("invoice_number", "N/A")
+        invoice_date = invoice_data.get("invoice_date", "N/A")
+        if ocr_error or customer_code == "N/A" or invoice_number == "N/A":
+            output_folder = "Error"
+        else:
+            effective_code, is_do_not_send = _lookup_master(customer_code, invoice_type)
+            if is_do_not_send:
+                output_folder = _DO_NOT_SEND_FOLDER
+            renamed_filename = _build_renamed_filename(
+                effective_code, invoice_number, invoice_date
+            )
 
         dest_name = renamed_filename if renamed_filename else filename
         blob_path = f"executions/{execution_folder}/{output_folder}/{dest_name}"
