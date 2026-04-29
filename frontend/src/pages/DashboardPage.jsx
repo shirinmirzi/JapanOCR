@@ -91,6 +91,7 @@ const STATUS_COLORS = {
   partial:    '#f97316',
   incomplete: '#f97316',
   cancelled:  '#9ca3af',
+  donotsend:  '#f59e0b',
 };
 
 /**
@@ -150,7 +151,9 @@ const DonutChart = ({ byStatus, total }) => {
               className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
               style={{ backgroundColor: STATUS_COLORS[status] || '#d1d5db' }}
             />
-            <span className="text-xs text-gray-600 capitalize truncate flex-1">{status}</span>
+            <span className="text-xs text-gray-600 capitalize truncate flex-1">
+              {status === 'donotsend' ? '🚫 DoNotSend' : status}
+            </span>
             <span className="text-xs font-medium text-gray-800 flex-shrink-0">{count}</span>
             <span className="text-xs text-gray-400 flex-shrink-0 w-8 text-right">
               {Math.round((count / total) * 100)}%
@@ -263,6 +266,11 @@ export default function DashboardPage() {
   const doNotSend = kpis.do_not_send || 0;
   const successRate = totalInvoices > 0 ? Math.round((processed / totalInvoices) * 100) : 0;
 
+  // Augment status breakdown with DoNotSend for the chart legend
+  const chartByStatus = doNotSend > 0
+    ? { ...byStatus, donotsend: doNotSend }
+    : byStatus;
+
   const maxVendorCount = vendors.reduce((max, v) => Math.max(max, v.count), 1);
 
   const formatDate = (ts) => ts ? new Date(ts).toLocaleString() : '—';
@@ -351,7 +359,7 @@ export default function DashboardPage() {
         {/* Status distribution — donut pie chart */}
         <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
           <h2 className="font-semibold text-gray-800 mb-4 text-sm uppercase tracking-wide">Status Distribution</h2>
-          <DonutChart byStatus={byStatus} total={totalInvoices} />
+          <DonutChart byStatus={chartByStatus} total={totalInvoices} />
         </div>
       </div>
 

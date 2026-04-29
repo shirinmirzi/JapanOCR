@@ -278,7 +278,7 @@ def get_dashboard_stats() -> dict:
 
     do_not_send_rows = execute_query(
         "SELECT COUNT(*) as count FROM invoices "
-        "WHERE upload_folder = 'DoNotSend' AND status != 'deleted'"
+        "WHERE LOWER(upload_folder) = 'donotsend' AND status != 'deleted'"
     )
     do_not_send = do_not_send_rows[0]["count"] if do_not_send_rows else 0
 
