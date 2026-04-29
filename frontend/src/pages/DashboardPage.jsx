@@ -20,6 +20,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { getDashboardSummary } from '../services/api';
 import { t } from '../i18n';
+import { useLang } from '../context/LangContext';
 
 /**
  * Returns a Tailwind CSS class string for a coloured status badge pill.
@@ -211,6 +212,7 @@ const INVOICE_TABLE_COLS = ['Invoice #', 'Total', 'Date', 'Status', 'Output'];
  * @returns {JSX.Element} Dashboard page with auto-refreshing summary panels
  */
 export default function DashboardPage() {
+  useLang();
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(false);
   const [range, setRange] = useState('all');

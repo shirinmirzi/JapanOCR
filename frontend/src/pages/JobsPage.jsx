@@ -17,6 +17,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { getJobsPaged } from '../services/api';
 import { t } from '../i18n';
+import { useLang } from '../context/LangContext';
 
 /**
  * Returns a Tailwind CSS class string for a colored status badge pill.
@@ -42,6 +43,7 @@ const statusBadge = (status) => {
  * @returns {JSX.Element} Jobs table with status filter, pagination, and detail rows
  */
 export default function JobsPage() {
+  useLang();
   const [data, setData] = useState({ items: [], total: 0, total_pages: 1 });
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('');

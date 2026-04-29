@@ -16,6 +16,7 @@
 import React, { useRef, useState } from 'react';
 import { uploadMasterData } from '../services/api';
 import { t } from '../i18n';
+import { useLang } from '../context/LangContext';
 
 const MASTER_TYPES = [
   { value: 'daily', labelKey: 'config_master_daily' },
@@ -30,6 +31,7 @@ const ACCEPTED_EXTENSIONS = ['.xlsx', '.xlsm', '.csv'];
  * @returns {JSX.Element} Config page with file upload form and result feedback
  */
 export default function ConfigPage() {
+  useLang();
   const [masterType, setMasterType] = useState('daily');
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);

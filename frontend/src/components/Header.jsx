@@ -7,7 +7,7 @@
  *
  * Key Features:
  * - Module Toggle: Switches between invoice and fax processing contexts
- * - Language Switch: Toggles EN/JA with a full page reload to reapply strings
+ * - Language Switch: Toggles EN/JA by updating LangContext, preserving page state
  * - User Dropdown: Displays user name/email and provides sign-out action
  * - Nav Bar: Active-indicator tab links for all main application routes
  *
@@ -21,7 +21,8 @@ import { useMsal } from '@azure/msal-react';
 import { useUser } from '../context/UserContext';
 import { useModule } from '../context/ModuleContext';
 import { clearDevLogin, isDevLogin } from '../services/api';
-import { t, setLang, getLang, availableLangs } from '../i18n';
+import { t, availableLangs } from '../i18n';
+import { useLang } from '../context/LangContext';
 
 const HEADER_BG = '#002F45';
 const NAV_BG = '#00253A';
@@ -53,13 +54,11 @@ export default function Header() {
   const { module, setModule } = useModule();
   const navigate = useNavigate();
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [lang, setLangState] = useState(getLang());
+  const { lang, setLang } = useLang();
   const dropdownRef = useRef(null);
 
   const handleLangChange = (l) => {
     setLang(l);
-    setLangState(l);
-    window.location.reload();
   };
 
   const handleSignOut = () => {
