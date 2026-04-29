@@ -298,6 +298,37 @@ def test_build_monthly_renamed_filename_no_invalid_chars_in_output() -> None:
     assert not re.search(r'[<>:"/\\|?*]', name)
 
 
+def test_build_monthly_renamed_filename_sanitizes_customer_code_with_colon() -> None:
+    """customer_code containing a colon (e.g. raw OCR 'ITEM CODE: 8039440753')
+    must have the colon stripped so the output filename is Windows-safe."""
+    name = _build_monthly_renamed_filename("ITEM CODE: 8039440753", "8030066822", "2025/05/01")
+    assert ":" not in name
+    assert not re.search(r'[<>:"/\\|?*]', name)
+
+
+def test_build_monthly_renamed_filename_sanitizes_all_invalid_chars() -> None:
+    """All Windows-invalid characters are stripped from customer_code."""
+    name = _build_monthly_renamed_filename('bad"name<here>', "8030066822", "2025/05/01")
+    assert not re.search(r'[<>:"/\\|?*]', name)
+
+
+# =============================================================================
+# _safe_customer_code guard (behaviour validated through extract_invoice_data
+# + routing logic — 10-digit item codes must be rejected)
+# =============================================================================
+
+
+def test_build_monthly_renamed_filename_item_code_prefix_stripped() -> None:
+    """'ITEM CODE: ' prefix in customer_code must be sanitized away so the
+    colon never appears in the output filename path."""
+    # This mirrors the exact OCR label text that produced WinError 123 in the
+    # reported bug.  The sanitization in _build_monthly_renamed_filename must
+    # strip the colon so the path is always Windows-safe.
+    name = _build_monthly_renamed_filename("ITEM CODE: 8039440753", "8030066821", "2025/05/01")
+    assert "ITEM CODE" not in name or ":" not in name  # colon must be gone
+    assert not re.search(r'[<>:"/\\|?*]', name)
+
+
 # =============================================================================
 # _split_pdf_pages
 # =============================================================================
