@@ -3,11 +3,11 @@
  *
  * Paginated, filterable view of all processing activity log entries. Groups
  * log rows by original filename and supports per-file expansion, CSV export,
- * status/date filtering, and optional auto-refresh.
+ * date filtering, and optional auto-refresh.
  *
  * Key Features:
  * - Grouped Rows: Log entries collapsed by filename with expandable details
- * - Filters: Free-text search, date range, status multi-select, module filter
+ * - Filters: Free-text search, date range, module filter
  * - Auto Refresh: Configurable polling that stops once all entries are settled
  * - CSV Export: Downloads the current filtered result set as a CSV file
  *
@@ -18,27 +18,6 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { getLogsPaged } from '../services/api';
 import { useModule } from '../context/ModuleContext';
 import { t } from '../i18n';
-
-const STATUS_OPTIONS = [
-  'processing', 'success', 'processed', 'completed',
-  'error', 'failed', 'not_found', 'timeout',
-  'incomplete', 'cancelled', 'info',
-];
-
-// Short display labels for the compact status chips
-const STATUS_CHIP_LABELS = {
-  success:    'Success',
-  processed:  'Processed',
-  completed:  'Done',
-  error:      'Error',
-  failed:     'Failed',
-  not_found:  'Not Found',
-  timeout:    'Timeout',
-  incomplete: 'Partial',
-  cancelled:  'Cancelled',
-  processing: 'Active',
-  info:       'Info',
-};
 
 const statusBadge = (status) => {
   const map = {
@@ -109,12 +88,10 @@ function groupLogs(items) {
         label: log.execution_folder || getDatePrefix(log.timestamp) || 'Unknown',
         items: [],
         latest: log.timestamp || '',
-        userIds: new Set(),
       };
     }
     groups[key].items.push(log);
     if ((log.timestamp || '') > groups[key].latest) groups[key].latest = log.timestamp;
-    if (log.user_id) groups[key].userIds.add(log.user_id);
   });
   // Sort: processing groups first, then by latest timestamp desc
   return Object.values(groups).sort((a, b) => {
@@ -185,7 +162,6 @@ export default function LogsPage() {
   const [q, setQ] = useState('');
   const [since, setSince] = useState('');
   const [until, setUntil] = useState('');
-  const [statuses, setStatuses] = useState([]);
   const [loading, setLoading] = useState(false);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [expanded, setExpanded] = useState(new Set());
@@ -228,7 +204,6 @@ export default function LogsPage() {
         q: q || undefined,
         since: since || undefined,
         until: until || undefined,
-        statuses: statuses.length ? statuses : undefined,
         module: module || undefined,
       };
       const result = await getLogsPaged(params);
@@ -245,7 +220,7 @@ export default function LogsPage() {
     } finally {
       if (myId === loadIdRef.current) setLoading(false);
     }
-  }, [page, q, since, until, statuses, module]);
+  }, [page, q, since, until, module]);
 
   // Keep a stable ref to the latest load function so the polling interval
   // doesn't need to be recreated every time data changes.
@@ -272,11 +247,6 @@ export default function LogsPage() {
     const id = setInterval(() => loadRef.current(true), 3000);
     return () => clearInterval(id);
   }, [data.items]);
-
-  const toggleStatus = (s) =>
-    setStatuses((prev) =>
-      prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]
-    );
 
   const toggleExpand = (key) =>
     setExpanded((prev) => {
@@ -340,7 +310,7 @@ export default function LogsPage() {
         </div>
       </div>
 
-      {/* Compact filter bar — inline strip instead of heavy card */}
+      {/* Compact filter bar — search + date range only */}
       <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 mb-4 flex flex-wrap gap-2 items-center">
         <input
           type="text"
@@ -363,25 +333,9 @@ export default function LogsPage() {
           title={t('logs_filter_until')}
           className="text-xs border border-gray-300 rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 bg-white"
         />
-        <span className="text-gray-300 hidden sm:inline">|</span>
-        <div className="flex flex-wrap gap-1">
-          {STATUS_OPTIONS.map((s) => (
-            <button
-              key={s}
-              onClick={() => { toggleStatus(s); setPage(1); }}
-              className={`px-2 py-0.5 text-xs rounded-full font-medium transition-colors ${
-                statuses.includes(s)
-                  ? 'bg-blue-500 text-white'
-                  : 'border border-gray-200 text-gray-500 hover:bg-gray-100 bg-white'
-              }`}
-            >
-              {STATUS_CHIP_LABELS[s] || s}
-            </button>
-          ))}
-        </div>
-        {(q || since || until || statuses.length > 0) && (
+        {(q || since || until) && (
           <button
-            onClick={() => { setQInput(''); setQ(''); setSince(''); setUntil(''); setStatuses([]); setPage(1); }}
+            onClick={() => { setQInput(''); setQ(''); setSince(''); setUntil(''); setPage(1); }}
             className="ml-auto text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded hover:bg-gray-100 transition-colors"
           >
             Clear
@@ -433,7 +387,6 @@ export default function LogsPage() {
           const failed = group.items.filter((l) => isFailed(l.status)).length;
           const processing = group.items.filter((l) => isProcessing(l.status)).length;
           const incomplete = group.items.filter((l) => isIncomplete(l.status)).length;
-          const users = [...group.userIds].slice(0, 2).join(', ');
           const borderClass = groupBorderClass(processing, failed, incomplete, complete);
 
           return (
@@ -460,12 +413,6 @@ export default function LogsPage() {
                     <span>{group.items.length} file{group.items.length !== 1 ? 's' : ''}</span>
                     <span className="text-gray-200">•</span>
                     <span>{formatDate(group.latest)}</span>
-                    {users && (
-                      <>
-                        <span className="text-gray-200">•</span>
-                        <span className="px-1.5 py-0.5 bg-gray-100 rounded text-gray-500 font-medium">{users}</span>
-                      </>
-                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5 flex-shrink-0 mt-0.5">
@@ -498,7 +445,7 @@ export default function LogsPage() {
                   {group.items.map((log) => (
                     <div
                       key={log.id}
-                      className="px-4 py-2.5 flex items-start gap-3 border-b border-gray-50 last:border-0 hover:bg-gray-50"
+                      className="px-4 py-2 flex items-center gap-3 border-b border-gray-50 last:border-0 hover:bg-gray-50"
                     >
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -515,21 +462,18 @@ export default function LogsPage() {
                           )}
                         </div>
                         {(log.message || log.error) && (
-                          <div className="mt-0.5 text-xs text-gray-500 truncate max-w-sm">
+                          <div className="text-xs text-gray-500 truncate max-w-sm">
                             {log.message || log.error}
                           </div>
                         )}
-                        {log.output_path && (
-                          <div className="mt-0.5 text-xs text-gray-400 truncate max-w-sm font-mono">
-                            {log.output_path}
-                          </div>
-                        )}
-                        <div className="mt-0.5 text-xs text-gray-400">{formatDate(log.timestamp)}</div>
+                        <div className="text-xs text-gray-400">{formatDate(log.timestamp)}</div>
                       </div>
-                      <div className="flex items-center gap-1.5 flex-shrink-0 mt-0.5">
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
                         {log.folder_name && (
                           <span className={`px-2 py-0.5 text-xs rounded font-medium ${folderBadge(log.folder_name)}`}>
-                            {log.folder_name}
+                            {log.folder_name.toLowerCase() === 'donotsend' || log.folder_name.toLowerCase() === 'do_not_send'
+                              ? '🚫 DoNotSend'
+                              : log.folder_name}
                           </span>
                         )}
                         <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${statusBadge(log.status)}`}>
