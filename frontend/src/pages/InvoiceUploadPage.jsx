@@ -17,7 +17,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ImportantNotice from '../components/ImportantNotice';
-import { uploadInvoice, bulkUploadInvoices, getBulkJob } from '../services/api';
+import { uploadInvoice, bulkUploadInvoices, getBulkJob, cancelBulkJob } from '../services/api';
 import { t } from '../i18n';
 import { useLang } from '../context/LangContext';
 
@@ -289,7 +289,7 @@ function SingleUpload() {
 
 // ── Bulk upload ────────────────────────────────────────────────────────────────
 
-const TERMINAL_STATUSES = new Set(['done', 'failed', 'cancelled', 'partial']);
+const TERMINAL_STATUSES = new Set(['done', 'failed', 'cancelled', 'partial', 'interrupted']);
 const POLL_INTERVAL = 1200;
 
 const statusBadge = (status) => {
@@ -297,6 +297,7 @@ const statusBadge = (status) => {
     done: 'bg-green-100 text-green-800',
     failed: 'bg-red-100 text-red-800',
     cancelled: 'bg-gray-100 text-gray-500',
+    interrupted: 'bg-gray-100 text-gray-500',
     processing: 'bg-indigo-100 text-indigo-700',
     queued: 'bg-yellow-50 text-yellow-700 border border-yellow-200',
     partial: 'bg-orange-100 text-orange-800',
@@ -423,6 +424,23 @@ function BulkUpload() {
     }
   };
 
+  const handleCancel = async () => {
+    if (!jobId) return;
+    try {
+      await cancelBulkJob(jobId);
+      setJob((prev) => (prev ? { ...prev, status: 'cancelled' } : prev));
+      setRows((prev) =>
+        prev.map((r) =>
+          r.status === 'pending' || r.status === 'processing' ? { ...r, status: 'cancelled' } : r
+        )
+      );
+      stopPolling();
+      setRunning(false);
+    } catch (err) {
+      setError(err?.response?.data?.detail || err.message || 'Cancel failed');
+    }
+  };
+
   const handleReset = () => {
     stopPolling();
     localStorage.removeItem('bulk_job_id');
@@ -510,6 +528,14 @@ function BulkUpload() {
                   >
                     {t('bulk_view_logs')}
                   </button>
+                  {!TERMINAL_STATUSES.has(job.status) && (
+                    <button
+                      onClick={handleCancel}
+                      className="px-3 py-1.5 text-xs border border-red-200 text-red-700 rounded-lg hover:bg-red-50 transition-colors"
+                    >
+                      {t('bulk_cancel')}
+                    </button>
+                  )}
                   <button
                     onClick={handleReset}
                     className="px-3 py-1.5 text-xs border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"

@@ -58,6 +58,11 @@ async def lifespan(app: FastAPI):
         logger.info("Database initialized")
     except Exception as e:
         logger.error("Failed to initialize database: %s", e)
+    try:
+        from services.jobs import mark_stale_jobs_interrupted
+        mark_stale_jobs_interrupted()
+    except Exception as e:
+        logger.warning("Could not mark stale jobs as interrupted: %s", e)
     yield
     close_connection_pool()
     logger.info("Connection pool closed")

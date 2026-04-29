@@ -49,7 +49,7 @@ from services.file_metadata_client import (
     get_invoices_paged,
     soft_delete_invoice,
 )
-from services.jobs import create_job, increment_processed, set_job_results, set_job_status
+from services.jobs import create_job, get_job, increment_processed, set_job_results, set_job_status
 from services.logging_client import log_processing_start, update_log_entry
 
 logger = logging.getLogger(__name__)
@@ -580,6 +580,8 @@ def _background_bulk_process(job_id: str, files_data: list, user_id: str, invoic
 
     Updates job status and writes partial results after each file so the
     upload page can display live progress without polling the database.
+    Checks the job's DB status before each file so that a cancellation or
+    server-restart interrupt is honoured promptly.
 
     Args:
         job_id: UUID of the parent job record to update throughout.
@@ -595,9 +597,28 @@ def _background_bulk_process(job_id: str, files_data: list, user_id: str, invoic
         execution_folder = _build_execution_folder()
     set_job_status(job_id, "processing")
     results = {}
-    for item in files_data:
+    total = len(files_data)
+    for idx, item in enumerate(files_data):
+        # Check for cancellation or external interruption before each file.
+        try:
+            current_job = get_job(job_id)
+            current_status = current_job.get("status") if current_job else None
+        except Exception:
+            current_status = None
+        if current_status in ("cancelled", "interrupted"):
+            logger.info(
+                "Job %s: %s — stopping before file %d/%d (%s)",
+                job_id, current_status, idx + 1, total, item["filename"],
+            )
+            set_job_results(job_id, results)
+            return
+
         filename = item["filename"]
         content = item["content"]
+        logger.info(
+            "Job %s: processing file %d/%d — %s",
+            job_id, idx + 1, total, filename,
+        )
 
         log_id = log_processing_start(
             filename,
