@@ -19,10 +19,12 @@ import { useNavigate } from 'react-router-dom';
 import ImportantNotice from '../components/ImportantNotice';
 import { uploadInvoice, bulkUploadInvoices, getBulkJob } from '../services/api';
 import { t } from '../i18n';
+import { useLang } from '../context/LangContext';
 
 // ── Invoice type toggle ────────────────────────────────────────────────────────
 
 function InvoiceTypeToggle({ value, onChange }) {
+  useLang();
   return (
     <div className="mb-4">
       <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">{t('invoice_type')}</p>
@@ -589,6 +591,7 @@ function BulkUpload() {
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function InvoiceUploadPage() {
+  useLang();
   const [mode, setMode] = useState(() => {
     const savedMode = localStorage.getItem('upload_mode');
     // Auto-switch to bulk when a bulk job exists and the user has not

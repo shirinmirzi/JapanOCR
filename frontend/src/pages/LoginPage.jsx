@@ -20,6 +20,7 @@ import { useMsal } from '@azure/msal-react';
 import { loginRequest } from '../msalConfig';
 import { enableDevLogin, isDevLogin } from '../services/api';
 import { t } from '../i18n';
+import { useLang } from '../context/LangContext';
 
 /**
  * Renders the Microsoft Entra ID login page with an optional dev-login bypass.
@@ -27,6 +28,7 @@ import { t } from '../i18n';
  * @returns {JSX.Element} Full-page login screen with sign-in button
  */
 export default function LoginPage() {
+  useLang();
   const isAuthenticated = useIsAuthenticated();
   const navigate = useNavigate();
   const { instance } = useMsal();

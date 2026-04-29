@@ -18,6 +18,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { getLogsPaged } from '../services/api';
 import { useModule } from '../context/ModuleContext';
 import { t } from '../i18n';
+import { useLang } from '../context/LangContext';
 
 const statusBadge = (status) => {
   const map = {
@@ -154,6 +155,7 @@ const MOUNT_POLL_WINDOW_MS = 30 * 1000;
 export default function LogsPage() {
   // Read selected module from the global header toggle
   const { module } = useModule();
+  useLang();
 
   const [data, setData] = useState({ items: [], total: 0, total_pages: 1 });
   const [page, setPage] = useState(1);

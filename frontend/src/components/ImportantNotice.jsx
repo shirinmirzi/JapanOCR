@@ -13,6 +13,7 @@
  */
 import React, { useState } from 'react';
 import { t } from '../i18n';
+import { useLang } from '../context/LangContext';
 
 /**
  * Renders a dismissible amber notice banner with processing guidelines.
@@ -20,6 +21,7 @@ import { t } from '../i18n';
  * @returns {JSX.Element|null} The notice banner, or null once dismissed
  */
 export default function ImportantNotice() {
+  useLang();
   const [open, setOpen] = useState(true);
 
   if (!open) return null;
