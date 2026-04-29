@@ -48,11 +48,10 @@ async def get_dashboard_summary(
 
     Returns:
         Dict with 'kpis' (invoices_total, jobs_total, logs_total,
-        by_status, vendors) and 'recent' (jobs, invoices, failures).
+        by_status, do_not_send) and 'recent' (jobs, invoices, failures).
     """
     stats = get_dashboard_stats()
     by_status = stats["by_status"]
-    vendors = stats["vendors"]
 
     if since:
         invoices_total_row = execute_query(
@@ -120,7 +119,6 @@ async def get_dashboard_summary(
             "jobs_total": jobs_total,
             "logs_total": logs_total,
             "by_status": by_status,
-            "vendors": vendors,
             "do_not_send": stats.get("do_not_send", 0),
         },
         "recent": {
