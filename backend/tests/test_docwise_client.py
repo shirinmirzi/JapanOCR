@@ -196,3 +196,46 @@ def test_extract_invoice_data_strips_bullet_prefixes() -> None:
     text = "- 172865 | 8039444166 | 2025/04/01"
     result = extract_invoice_data(_make_response(text), invoice_type="daily")
     assert result["customer_code"] == "172865"
+
+
+# =============================================================================
+# extract_invoice_data – monthly invoice field validation (ITEM CODE guard)
+# =============================================================================
+
+
+def test_extract_invoice_data_monthly_resets_fields_when_invoice_number_not_10_digits() -> None:
+    """When the first pipe line has a non-10-digit second field, all header
+    fields must be reset to 'N/A' so that raw OCR labels never reach filenames."""
+    # Simulate the OCR returning a line-item row as the first pipe line.
+    text = "ITEM CODE: 8039440753 | ITEM NAME: N | 1 | 1000 | 1000"
+    result = extract_invoice_data(_make_response(text), invoice_type="monthly")
+    assert result["customer_code"] == "N/A"
+    assert result["invoice_number"] == "N/A"
+    assert result["invoice_date"] == "N/A"
+
+
+def test_extract_invoice_data_monthly_item_code_line_does_not_corrupt_customer_code() -> None:
+    """Raw OCR label strings like 'ITEM CODE: 8039440753' must never appear
+    in customer_code after parsing."""
+    text = "ITEM CODE: 8039440753 | ITEM NAME: Some Widget | 2 | 500 | 1000"
+    result = extract_invoice_data(_make_response(text), invoice_type="monthly")
+    assert "ITEM CODE" not in result["customer_code"]
+    assert ":" not in result["customer_code"]
+
+
+def test_extract_invoice_data_monthly_valid_header_preserved_after_validation() -> None:
+    """A correct 10-digit Coll Invoice No. must survive the post-parse validation."""
+    text = "172691 | 8030066978 | 2025/05/01 | Vendor | Customer | 50000 | 5000 | 45000 | JPY"
+    result = extract_invoice_data(_make_response(text), invoice_type="monthly")
+    assert result["customer_code"] == "172691"
+    assert result["invoice_number"] == "8030066978"
+    assert result["invoice_date"] == "2025/05/01"
+
+
+def test_extract_invoice_data_monthly_nine_digit_invoice_number_reset_to_na() -> None:
+    """A 9-digit invoice number is not a valid Coll Invoice No.; fields must
+    be reset to 'N/A' to avoid partial/corrupted filename generation."""
+    text = "172691 | 803006697 | 2025/05/01 | Vendor | Customer | 50000 | 5000 | 45000 | JPY"
+    result = extract_invoice_data(_make_response(text), invoice_type="monthly")
+    assert result["customer_code"] == "N/A"
+    assert result["invoice_number"] == "N/A"

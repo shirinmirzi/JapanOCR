@@ -95,10 +95,13 @@ def _build_monthly_renamed_filename(
     """Build renamed filename for monthly invoices.
 
     Format: ``CustomerCode_CollInvoiceNo_YYYYMMDD請求明細書.pdf``
+
+    The date segment is extracted as digits only; if fewer than 8 digits are
+    present (e.g. when raw OCR labels leak into the field) today's date is
+    used instead.
     """
-    if invoice_date and invoice_date != "N/A":
-        date_str = invoice_date.replace("/", "").replace("-", "")
-    else:
+    date_str = re.sub(r"[^0-9]", "", invoice_date or "")[:8] if invoice_date and invoice_date != "N/A" else ""
+    if len(date_str) < 8:
         date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
     return f"{customer_code}_{coll_invoice_number}_{date_str}請求明細書.pdf"
 
@@ -180,7 +183,16 @@ def _process_monthly_page(
         customer_code = page_invoice_data.get("customer_code", "N/A")
         coll_invoice_no = page_invoice_data.get("invoice_number", "N/A")
         invoice_date = page_invoice_data.get("invoice_date", "N/A")
-        if customer_code != "N/A" and coll_invoice_no != "N/A":
+        # Only build a monthly filename when the extracted fields are valid.
+        # coll_invoice_no must be exactly 10 digits (per spec) and
+        # customer_code must contain no Windows-invalid characters so that
+        # raw OCR labels like "ITEM CODE: 8039440753" never reach the
+        # filesystem path.
+        _valid_coll_invoice = bool(re.fullmatch(r"\d{10}", coll_invoice_no))
+        _safe_customer_code = customer_code != "N/A" and not re.search(
+            r'[<>:"/\\|?*\x00-\x1f]', customer_code
+        )
+        if _safe_customer_code and _valid_coll_invoice:
             effective_code, is_do_not_send = _lookup_master(customer_code, "monthly")
             if is_do_not_send:
                 page_output_folder = _DO_NOT_SEND_FOLDER
