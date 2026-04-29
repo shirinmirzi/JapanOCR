@@ -318,14 +318,17 @@ def test_build_monthly_renamed_filename_sanitizes_all_invalid_chars() -> None:
 # =============================================================================
 
 
-def test_build_monthly_renamed_filename_item_code_prefix_stripped() -> None:
-    """'ITEM CODE: ' prefix in customer_code must be sanitized away so the
-    colon never appears in the output filename path."""
-    # This mirrors the exact OCR label text that produced WinError 123 in the
-    # reported bug.  The sanitization in _build_monthly_renamed_filename must
-    # strip the colon so the path is always Windows-safe.
-    name = _build_monthly_renamed_filename("ITEM CODE: 8039440753", "8030066821", "2025/05/01")
-    assert "ITEM CODE" not in name or ":" not in name  # colon must be gone
+def test_build_monthly_renamed_filename_strips_slash_and_colon_from_customer_code() -> None:
+    """customer_code containing both '/' and ':' (both Windows-invalid path
+    characters that cause WinError 123) must have both stripped.
+
+    A customer_code like 'N/A: 8039440753' would produce a path where the '/'
+    is treated as a directory separator on Windows and ':' makes the directory
+    name invalid.  The sanitization layer must remove all such characters.
+    """
+    name = _build_monthly_renamed_filename("N/A: 8039440753", "8030066821", "2025/05/01")
+    assert ":" not in name
+    assert "/" not in name
     assert not re.search(r'[<>:"/\\|?*]', name)
 
 
