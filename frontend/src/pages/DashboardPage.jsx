@@ -1,15 +1,16 @@
 /**
  * Japan OCR Tool - Dashboard Page
  *
- * Displays aggregated KPI metrics, vendor bar chart, status distribution,
- * and recent invoice/job activity. Polls the backend every 15 seconds and
- * supports filtering by time range (1h / 24h / 7d / all).
+ * Displays aggregated KPI metrics, vendor bar chart, status distribution
+ * donut chart, and recent invoice/job activity. Polls the backend every
+ * 15 seconds and supports filtering by time range (1h / 24h / 7d / all).
  *
  * Key Features:
- * - KPI Cards: Total invoices, processed, pending, failed, success rate,
- *   DoNotSend count, and total logs — each with a coloured accent bar
+ * - KPI Cards: Total invoices, processed, processing, pending, failed,
+ *   DoNotSend count, success rate, and total logs — each with a coloured
+ *   accent bar
  * - Vendor Chart: Horizontal bar chart of top invoice vendors
- * - Status Distribution: Breakdown of all invoice statuses
+ * - Status Distribution: CSS conic-gradient donut chart with colour legend
  * - Recent Invoices: Includes output-folder column with DoNotSend badge
  * - Auto Refresh: Polls every 15 s; manual refresh button also available
  *
@@ -70,6 +71,96 @@ const FolderBadge = ({ folder }) => {
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full font-medium ${folderBadgeClass(folder)}`}>
       {isDoNotSend ? '🚫 DoNotSend' : folder}
     </span>
+  );
+};
+
+/**
+ * Hex colour used in the status donut chart for each invoice status.
+ * Statuses that share a semantic meaning share the same colour.
+ */
+const STATUS_COLORS = {
+  processed:  '#22c55e',
+  done:       '#22c55e',
+  success:    '#22c55e',
+  completed:  '#22c55e',
+  processing: '#3b82f6',
+  queued:     '#93c5fd',
+  pending:    '#eab308',
+  failed:     '#ef4444',
+  error:      '#ef4444',
+  partial:    '#f97316',
+  incomplete: '#f97316',
+  cancelled:  '#9ca3af',
+};
+
+/**
+ * Builds a CSS conic-gradient string from a byStatus count map.
+ * Each slice is proportional to its count relative to the total.
+ *
+ * @param {Object} byStatus - Map of status key → invoice count
+ * @returns {string} CSS conic-gradient(...) value
+ */
+function buildConicGradient(byStatus) {
+  const entries = Object.entries(byStatus).filter(([, c]) => c > 0);
+  const total = entries.reduce((s, [, c]) => s + c, 0);
+  if (total === 0) return 'conic-gradient(#e5e7eb 0deg 360deg)';
+  let cumDeg = 0;
+  const segments = entries.map(([status, count]) => {
+    const color = STATUS_COLORS[status] || '#d1d5db';
+    const span = (count / total) * 360;
+    const seg = `${color} ${cumDeg.toFixed(2)}deg ${(cumDeg + span).toFixed(2)}deg`;
+    cumDeg += span;
+    return seg;
+  });
+  return `conic-gradient(${segments.join(', ')})`;
+}
+
+/**
+ * Renders a CSS conic-gradient donut chart with a centred total count.
+ *
+ * @param {Object} props
+ * @param {Object} props.byStatus - Map of status key → count
+ * @param {number} props.total - Total invoice count shown in the hole
+ * @returns {JSX.Element} Donut chart SVG-free implementation
+ */
+const DonutChart = ({ byStatus, total }) => {
+  const entries = Object.entries(byStatus).filter(([, c]) => c > 0);
+  const hasData = entries.length > 0 && total > 0;
+  return (
+    <div className="flex flex-col sm:flex-row items-center gap-6">
+      {/* Donut */}
+      <div className="relative flex-shrink-0 w-32 h-32">
+        <div
+          className="w-32 h-32 rounded-full"
+          style={{ background: hasData ? buildConicGradient(byStatus) : '#e5e7eb' }}
+        />
+        {/* Hollow centre */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="w-16 h-16 bg-white rounded-full flex flex-col items-center justify-center shadow-sm">
+            <span className="text-lg font-bold text-gray-800 leading-none">{total}</span>
+            <span className="text-[10px] text-gray-400 leading-none mt-0.5">total</span>
+          </div>
+        </div>
+      </div>
+      {/* Legend */}
+      <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+        {hasData ? entries.map(([status, count]) => (
+          <div key={status} className="flex items-center gap-2 min-w-0">
+            <span
+              className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
+              style={{ backgroundColor: STATUS_COLORS[status] || '#d1d5db' }}
+            />
+            <span className="text-xs text-gray-600 capitalize truncate flex-1">{status}</span>
+            <span className="text-xs font-medium text-gray-800 flex-shrink-0">{count}</span>
+            <span className="text-xs text-gray-400 flex-shrink-0 w-8 text-right">
+              {Math.round((count / total) * 100)}%
+            </span>
+          </div>
+        )) : (
+          <p className="text-sm text-gray-400">No data</p>
+        )}
+      </div>
+    </div>
   );
 };
 
@@ -166,6 +257,7 @@ export default function DashboardPage() {
 
   const totalInvoices = kpis.invoices_total || 0;
   const processed = byStatus.processed || 0;
+  const processing = byStatus.processing || 0;
   const pending = byStatus.pending || 0;
   const failed = byStatus.failed || 0;
   const doNotSend = kpis.do_not_send || 0;
@@ -213,31 +305,17 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* KPI cards — single responsive grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+      {/* KPI cards — 4-column grid gives 2 clean rows on large screens */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
         <KPI label="Total Invoices" value={totalInvoices} accent="blue" />
-        <KPI label="Processed" value={processed} accent="green" />
-        <KPI label="Pending" value={pending} accent="yellow" />
-        <KPI label="Failed" value={failed} accent="red" />
-        <KPI label="Success Rate" value={`${successRate}%`} accent="indigo" />
-        <KPI label="Total Logs" value={kpis.logs_total || 0} accent="purple" />
+        <KPI label="Processed"      value={processed}     accent="green" />
+        <KPI label="Processing"     value={processing}    accent="blue" sub={processing > 0 ? 'active' : undefined} />
+        <KPI label="DoNotSend"      value={doNotSend}     accent="amber" sub="routed away" />
+        <KPI label="Pending"        value={pending}       accent="yellow" />
+        <KPI label="Failed"         value={failed}        accent="red" />
+        <KPI label="Success Rate"   value={`${successRate}%`} accent="indigo" />
+        <KPI label="Total Logs"     value={kpis.logs_total || 0} accent="purple" />
       </div>
-
-      {/* DoNotSend KPI — shown only when there are routed-away invoices */}
-      {doNotSend > 0 && (
-        <div className="mb-6">
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center gap-4 shadow-sm">
-            <span className="text-2xl">🚫</span>
-            <div>
-              <p className="text-xs font-medium text-amber-700 uppercase tracking-wide">DoNotSend Routed</p>
-              <p className="text-2xl font-bold text-amber-900">{doNotSend}</p>
-            </div>
-            <p className="text-xs text-amber-600 ml-2">
-              {doNotSend === 1 ? 'invoice' : 'invoices'} routed to the DoNotSend folder based on master-table lookup.
-            </p>
-          </div>
-        </div>
-      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         {/* Vendor bar chart */}
@@ -270,31 +348,10 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* Status distribution */}
+        {/* Status distribution — donut pie chart */}
         <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
           <h2 className="font-semibold text-gray-800 mb-4 text-sm uppercase tracking-wide">Status Distribution</h2>
-          {Object.keys(byStatus).length === 0 ? (
-            <div className="py-8 text-center">
-              <p className="text-sm text-gray-400">No data</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {Object.entries(byStatus).map(([status, count]) => (
-                <div key={status} className="flex items-center gap-3">
-                  <span className={`px-2 py-0.5 text-xs rounded-full font-medium flex-shrink-0 ${statusBadge(status)}`}>
-                    {status}
-                  </span>
-                  <div className="flex-1 bg-gray-100 rounded-full h-1.5">
-                    <div
-                      className="h-1.5 rounded-full bg-blue-400"
-                      style={{ width: `${(count / Math.max(totalInvoices, 1)) * 100}%` }}
-                    />
-                  </div>
-                  <span className="text-sm text-gray-600 font-medium flex-shrink-0">{count}</span>
-                </div>
-              ))}
-            </div>
-          )}
+          <DonutChart byStatus={byStatus} total={totalInvoices} />
         </div>
       </div>
 
@@ -316,7 +373,7 @@ export default function DashboardPage() {
                   <td className="py-2.5 pr-4 text-gray-900 font-medium">{inv.invoice_number || '—'}</td>
                   <td className="py-2.5 pr-4 text-gray-600">{inv.vendor_name || '—'}</td>
                   <td className="py-2.5 pr-4 text-gray-600">{inv.total_amount || '—'}</td>
-                  <td className="py-2.5 pr-4 text-gray-400 text-xs">{inv.invoice_date || '—'}</td>
+                  <td className="py-2.5 pr-4 text-gray-400 text-xs">{formatDate(inv.invoice_date)}</td>
                   <td className="py-2.5 pr-4">
                     <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${statusBadge(inv.status)}`}>
                       {inv.status}
