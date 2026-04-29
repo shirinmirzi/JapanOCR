@@ -149,8 +149,10 @@ function Chevron({ open }) {
   );
 }
 
-// How long after mount to keep polling even without active-processing entries
-const MOUNT_POLL_WINDOW_MS = 30 * 1000;
+// How long after mount to keep polling even without active-processing entries.
+// Two minutes gives enough runway for a bulk job that was already in flight
+// when the user navigated to this page to surface its processing entries.
+const MOUNT_POLL_WINDOW_MS = 120 * 1000;
 
 export default function LogsPage() {
   // Read selected module from the global header toggle

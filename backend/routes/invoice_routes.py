@@ -164,6 +164,12 @@ def _process_monthly_page(
         ``output_folder``, ``blob_url``, ``blob_path``, ``page_number``,
         and optionally ``error``.
     """
+    page_log_id = log_processing_start(
+        page_filename,
+        user_id=user_id,
+        execution_folder=execution_folder,
+        module="invoice",
+    )
     page_invoice_data: dict = {}
     page_ocr_error = None
     try:
@@ -209,6 +215,12 @@ def _process_monthly_page(
                 effective_code, coll_invoice_no, invoice_date
             )
 
+    # Pages that could not be renamed (OCR error or invalid fields) go to
+    # Error instead of ProcessedFiles so they are never silently stored under
+    # the raw page filename (e.g. 通常_page3.pdf).
+    if page_renamed is None:
+        page_output_folder = "Error"
+
     page_dest = page_renamed if page_renamed else page_filename
     page_blob_path = f"executions/{execution_folder}/{page_output_folder}/{page_dest}"
     page_blob_url = None
@@ -241,6 +253,29 @@ def _process_monthly_page(
         "blob_path": page_blob_path,
         "page_number": page_num,
     }
+    # Update the per-page log entry to its terminal state now that the
+    # output folder and renamed filename are known.  The routing to "Error"
+    # above is the single source of truth, so we key off that here.
+    if page_output_folder == "Error":
+        update_log_entry(
+            page_log_id,
+            "error",
+            error=(
+                page_ocr_error
+                if page_ocr_error
+                else f"Extracted fields failed validation for page {page_num}"
+            ),
+            folder_name=page_output_folder,
+        )
+    else:
+        update_log_entry(
+            page_log_id,
+            "success",
+            message=f"Page {page_num} processed",
+            renamed_filename=page_renamed,
+            folder_name=page_output_folder,
+        )
+
     if page_ocr_error:
         page_result["error"] = page_ocr_error
     return page_result
