@@ -8,6 +8,7 @@ Author: SHIRIN MIRZI M K
 """
 
 from contextlib import contextmanager
+import re
 from unittest.mock import MagicMock, patch
 
 from routes.invoice_routes import (
@@ -269,6 +270,32 @@ def test_build_monthly_renamed_filename_differs_from_daily() -> None:
     assert "請求明細書" in monthly
     assert "納品書兼請求書" in daily
     assert monthly != daily
+
+
+def test_build_monthly_renamed_filename_garbage_date_uses_today() -> None:
+    """A date field containing raw OCR label text (e.g. 'QUANTITY: 1') must
+    not appear in the filename; today's date must be used as fallback."""
+    name = _build_monthly_renamed_filename("172691", "8030066978", "QUANTITY: 1")
+    # The date segment must be exactly 8 digits, not OCR label text.
+    date_segment = name.split("_")[2][:8]
+    assert len(date_segment) == 8
+    assert date_segment.isdigit()
+    assert "QUANTITY" not in name
+    assert ":" not in name
+
+
+def test_build_monthly_renamed_filename_partial_date_uses_today() -> None:
+    """A date that resolves to fewer than 8 digits triggers today's date."""
+    name = _build_monthly_renamed_filename("172691", "8030066978", "2025/05")
+    date_segment = name.split("_")[2][:8]
+    assert len(date_segment) == 8
+    assert date_segment.isdigit()
+
+
+def test_build_monthly_renamed_filename_no_invalid_chars_in_output() -> None:
+    """Output filename must contain no Windows-invalid characters."""
+    name = _build_monthly_renamed_filename("174579", "8030066822", "2025/05/01")
+    assert not re.search(r'[<>:"/\\|?*]', name)
 
 
 # =============================================================================

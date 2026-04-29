@@ -16,6 +16,7 @@ Author: SHIRIN MIRZI M K
 
 import logging
 import os
+import re
 import time
 
 import requests
@@ -288,6 +289,15 @@ def extract_invoice_data(docwise_response: dict, invoice_type: str = "daily") ->
                     if value:
                         fields[field_key] = value
                     break
+
+    # For monthly invoices, the Coll Invoice No. is always exactly 10 digits.
+    # If the parsed invoice_number does not satisfy this rule, the header data
+    # line was misidentified (e.g. a line-item row was treated as the header).
+    # Reset all header fields to "N/A" so that downstream filename generation
+    # never uses raw OCR labels such as "ITEM CODE: 8039440753".
+    if invoice_type == "monthly" and not re.fullmatch(r"\d{10}", fields.get("invoice_number", "")):
+        for key in field_keys:
+            fields[key] = "N/A"
 
     fields["line_items"] = line_item_lines
     fields["raw_text"] = raw_text
