@@ -469,13 +469,15 @@ export default function LogsPage() {
                         <div className="text-xs text-gray-400">{formatDate(log.timestamp)}</div>
                       </div>
                       <div className="flex items-center gap-1.5 flex-shrink-0">
-                        {log.folder_name && (
-                          <span className={`px-2 py-0.5 text-xs rounded font-medium ${folderBadge(log.folder_name)}`}>
-                            {log.folder_name.toLowerCase() === 'donotsend' || log.folder_name.toLowerCase() === 'do_not_send'
-                              ? '🚫 DoNotSend'
-                              : log.folder_name}
-                          </span>
-                        )}
+                        {log.folder_name && (() => {
+                          const lowerFolder = log.folder_name.toLowerCase();
+                          const isDoNotSend = lowerFolder === 'donotsend' || lowerFolder === 'do_not_send';
+                          return (
+                            <span className={`px-2 py-0.5 text-xs rounded font-medium ${folderBadge(log.folder_name)}`}>
+                              {isDoNotSend ? '🚫 DoNotSend' : log.folder_name}
+                            </span>
+                          );
+                        })()}
                         <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${statusBadge(log.status)}`}>
                           {isProcessing(log.status) ? (
                             <span className="flex items-center gap-1">
