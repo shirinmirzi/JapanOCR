@@ -124,6 +124,62 @@ def _lookup_master(customer_code: str, invoice_type: str) -> tuple[str, bool]:
     return destination_cd, False
 
 
+def _resolve_routing(
+    invoice_data: dict,
+    invoice_type: str,
+    ocr_error: str | None,
+) -> tuple[str, str | None]:
+    """Determine the output folder and optional renamed filename for a processed invoice.
+
+    For daily invoices the routing rules are (in priority order):
+    1. Any OCR error, or a missing customer_code / invoice_number from the PDF
+       → route to the ``Error`` folder; no rename.
+    2. The customer code is found in the master table with a non-numeric
+       destination_cd (e.g. 送付無し) → route to the ``DoNotSend`` folder;
+       rename using the original customer code from the PDF.
+    3. The customer code is found in the master table with a numeric
+       destination_cd → route to ``ProcessedFiles``; rename using the
+       destination_cd as the customer code prefix.
+    4. **The customer code is NOT found in the master table** → route to
+       ``ProcessedFiles``; rename using the original customer code extracted
+       from the PDF.  This is the intended fallback per the business rules:
+       the file is still processed and named after the PDF customer code.
+
+    Monthly invoices are not renamed and always land in ``ProcessedFiles``.
+
+    Args:
+        invoice_data: Extracted OCR fields (customer_code, invoice_number, …).
+        invoice_type: ``"daily"`` or ``"monthly"``.
+        ocr_error: Non-empty string when OCR failed; ``None`` otherwise.
+
+    Returns:
+        A tuple of ``(output_folder, renamed_filename)`` where
+        ``renamed_filename`` is ``None`` when no rename should happen.
+    """
+    output_folder = "ProcessedFiles"
+    renamed_filename = None
+
+    if invoice_type != "daily":
+        return output_folder, renamed_filename
+
+    customer_code = invoice_data.get("customer_code", "N/A")
+    invoice_number = invoice_data.get("invoice_number", "N/A")
+    invoice_date = invoice_data.get("invoice_date", "N/A")
+
+    if ocr_error or customer_code == "N/A" or invoice_number == "N/A":
+        return "Error", None
+
+    # Resolve customer_code against the master table.  When the code is not
+    # present in the master file, _lookup_master returns the original PDF
+    # customer code so the fallback rename still uses a meaningful identifier.
+    effective_code, is_do_not_send = _lookup_master(customer_code, invoice_type)
+    if is_do_not_send:
+        output_folder = _DO_NOT_SEND_FOLDER
+    renamed_filename = _build_renamed_filename(effective_code, invoice_number, invoice_date)
+
+    return output_folder, renamed_filename
+
+
 async def _process_single_file(
     file: UploadFile,
     user_id: str,
@@ -186,21 +242,7 @@ async def _process_single_file(
                 os.unlink(tmp_path)
 
         # Determine output subfolder and renamed filename (daily only)
-        renamed_filename = None
-        output_folder = "ProcessedFiles"
-        if invoice_type == "daily":
-            customer_code = invoice_data.get("customer_code", "N/A")
-            invoice_number = invoice_data.get("invoice_number", "N/A")
-            invoice_date = invoice_data.get("invoice_date", "N/A")
-            if ocr_error or customer_code == "N/A" or invoice_number == "N/A":
-                output_folder = "Error"
-            else:
-                effective_code, is_do_not_send = _lookup_master(customer_code, invoice_type)
-                if is_do_not_send:
-                    output_folder = _DO_NOT_SEND_FOLDER
-                renamed_filename = _build_renamed_filename(
-                    effective_code, invoice_number, invoice_date
-                )
+        output_folder, renamed_filename = _resolve_routing(invoice_data, invoice_type, ocr_error)
 
         dest_name = renamed_filename if renamed_filename else filename
         blob_path = f"executions/{execution_folder}/{output_folder}/{dest_name}"
@@ -324,21 +366,7 @@ def _background_bulk_process(job_id: str, files_data: list, user_id: str, invoic
                 os.unlink(tmp_path)
 
         # Determine output subfolder and renamed filename (daily only)
-        renamed_filename = None
-        output_folder = "ProcessedFiles"
-        if invoice_type == "daily":
-            customer_code = invoice_data.get("customer_code", "N/A")
-            invoice_number = invoice_data.get("invoice_number", "N/A")
-            invoice_date = invoice_data.get("invoice_date", "N/A")
-            if ocr_error or customer_code == "N/A" or invoice_number == "N/A":
-                output_folder = "Error"
-            else:
-                effective_code, is_do_not_send = _lookup_master(customer_code, invoice_type)
-                if is_do_not_send:
-                    output_folder = _DO_NOT_SEND_FOLDER
-                renamed_filename = _build_renamed_filename(
-                    effective_code, invoice_number, invoice_date
-                )
+        output_folder, renamed_filename = _resolve_routing(invoice_data, invoice_type, ocr_error)
 
         dest_name = renamed_filename if renamed_filename else filename
         blob_path = f"executions/{execution_folder}/{output_folder}/{dest_name}"
