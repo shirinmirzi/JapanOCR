@@ -7,12 +7,14 @@ filename construction, folder path building, and the master-table lookup.
 Author: SHIRIN MIRZI M K
 """
 
-import pytest
+from contextlib import contextmanager
+from unittest.mock import MagicMock, patch
 
 from routes.invoice_routes import (
     _build_execution_folder,
     _build_renamed_filename,
     _build_upload_folder,
+    _lookup_master,
 )
 
 # =============================================================================
@@ -89,3 +91,136 @@ def test_build_renamed_filename_empty_date_uses_today() -> None:
 def test_build_renamed_filename_preserves_customer_and_invoice_codes() -> None:
     name = _build_renamed_filename("ABC", "XYZ", "2025/12/31")
     assert name.startswith("ABC_XYZ_")
+
+
+# =============================================================================
+# _lookup_master
+# =============================================================================
+
+# Helper: build a fake get_db_connection context manager that yields a
+# connection whose cursor returns the given row from fetchone().
+
+def _make_fake_db(row: dict | None):
+    """Return a patch target and a context-manager factory for get_db_connection."""
+    fake_cur = MagicMock()
+    fake_cur.fetchone.return_value = row
+    fake_cur.__enter__ = lambda s: s
+    fake_cur.__exit__ = MagicMock(return_value=False)
+
+    fake_conn = MagicMock()
+    fake_conn.cursor.return_value = fake_cur
+    fake_conn.__enter__ = lambda s: s
+    fake_conn.__exit__ = MagicMock(return_value=False)
+
+    @contextmanager
+    def fake_get_db():
+        yield fake_conn
+
+    return fake_get_db
+
+
+def test_lookup_master_code_not_in_master_returns_original() -> None:
+    """When the customer code is absent from the master table the original
+    code must be returned and is_do_not_send must be False so the file is
+    routed to ProcessedFiles with the PDF customer code as the filename prefix."""
+    with patch("routes.invoice_routes.get_db_connection", _make_fake_db(None)):
+        effective_code, is_do_not_send = _lookup_master("C001", "daily")
+
+    assert effective_code == "C001"
+    assert is_do_not_send is False
+
+
+def test_lookup_master_numeric_destination_returns_destination_code() -> None:
+    """When the master row contains a numeric destination_cd the resolved
+    code is returned and is_do_not_send is False."""
+    row = {"destination_cd": "67890"}
+    with patch("routes.invoice_routes.get_db_connection", _make_fake_db(row)):
+        effective_code, is_do_not_send = _lookup_master("C001", "daily")
+
+    assert effective_code == "67890"
+    assert is_do_not_send is False
+
+
+def test_lookup_master_non_numeric_destination_sets_do_not_send() -> None:
+    """A non-numeric destination_cd (e.g. 送付無し) signals DoNotSend routing;
+    the original customer code is preserved and is_do_not_send is True."""
+    row = {"destination_cd": "送付無し"}
+    with patch("routes.invoice_routes.get_db_connection", _make_fake_db(row)):
+        effective_code, is_do_not_send = _lookup_master("C001", "daily")
+
+    assert effective_code == "C001"
+    assert is_do_not_send is True
+
+
+def test_lookup_master_empty_destination_returns_original() -> None:
+    """An empty destination_cd means the row exists but has no routing code;
+    the original customer code is used and is_do_not_send is False."""
+    with patch("routes.invoice_routes.get_db_connection", _make_fake_db({"destination_cd": ""})):
+        effective_code, is_do_not_send = _lookup_master("C001", "daily")
+
+    assert effective_code == "C001"
+    assert is_do_not_send is False
+
+
+def test_lookup_master_db_exception_falls_back_to_original() -> None:
+    """If the DB lookup raises an exception the function must fall back
+    gracefully: return the original customer code and False."""
+    def raising_get_db():
+        raise RuntimeError("connection refused")
+
+    with patch("routes.invoice_routes.get_db_connection", raising_get_db):
+        effective_code, is_do_not_send = _lookup_master("C001", "daily")
+
+    assert effective_code == "C001"
+    assert is_do_not_send is False
+
+
+def test_lookup_master_unknown_invoice_type_returns_original() -> None:
+    """An unrecognised invoice_type has no master table entry; the original
+    customer code is returned without touching the database."""
+    effective_code, is_do_not_send = _lookup_master("C001", "unknown_type")
+
+    assert effective_code == "C001"
+    assert is_do_not_send is False
+
+
+def test_lookup_master_monthly_type_not_in_master_returns_original() -> None:
+    """Same fallback behaviour applies to the monthly invoice master."""
+    with patch("routes.invoice_routes.get_db_connection", _make_fake_db(None)):
+        effective_code, is_do_not_send = _lookup_master("M999", "monthly")
+
+    assert effective_code == "M999"
+    assert is_do_not_send is False
+
+
+# =============================================================================
+# Routing decision: customer code absent from master → ProcessedFiles
+# =============================================================================
+
+def test_routing_not_in_master_uses_pdf_code_and_processed_folder() -> None:
+    """End-to-end routing assertion for the fallback case.
+
+    When a customer code is extracted from the PDF but is not present in the
+    master file the renamed filename must use the PDF customer code and the
+    output folder must be ProcessedFiles (not Error, not DoNotSend).
+    """
+    customer_code = "C001"
+    invoice_number = "INV999"
+    invoice_date = "2025/04/01"
+
+    # Simulate: code present in PDF, not in master.
+    with patch("routes.invoice_routes.get_db_connection", _make_fake_db(None)):
+        effective_code, is_do_not_send = _lookup_master(customer_code, "daily")
+
+    # Verify the fallback code is the original PDF code.
+    assert effective_code == customer_code
+    assert is_do_not_send is False
+
+    # Verify the filename is built from the PDF code.
+    renamed = _build_renamed_filename(effective_code, invoice_number, invoice_date)
+    assert renamed == "C001_INV999_20250401納品書兼請求書.pdf"
+
+    # is_do_not_send=False guarantees the routing code leaves output_folder as
+    # "ProcessedFiles" — neither Error nor DoNotSend is selected.
+    assert not is_do_not_send, "unmatched master code must not trigger DoNotSend routing"
+
