@@ -201,7 +201,7 @@ const KPI = ({ label, value, sub, accent = 'gray' }) => (
   </div>
 );
 
-const INVOICE_TABLE_COLS = ['Invoice #', 'Vendor', 'Total', 'Date', 'Status', 'Output'];
+const INVOICE_TABLE_COLS = ['Invoice #', 'Total', 'Date', 'Status', 'Output'];
 
 /**
  * Renders the dashboard with KPI cards, vendor chart, status distribution,
@@ -256,7 +256,6 @@ export default function DashboardPage() {
   const kpis = summary?.kpis || {};
   const recent = summary?.recent || {};
   const byStatus = kpis.by_status || {};
-  const vendors = kpis.vendors || [];
 
   const totalInvoices = kpis.invoices_total || 0;
   const processed = byStatus.processed || 0;
@@ -270,8 +269,6 @@ export default function DashboardPage() {
   const chartByStatus = doNotSend > 0
     ? { ...byStatus, donotsend: doNotSend }
     : byStatus;
-
-  const maxVendorCount = vendors.reduce((max, v) => Math.max(max, v.count), 1);
 
   const formatDate = (ts) => ts ? new Date(ts).toLocaleString() : '—';
 
@@ -325,37 +322,7 @@ export default function DashboardPage() {
         <KPI label="Total Logs"     value={kpis.logs_total || 0} accent="purple" />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-        {/* Vendor bar chart */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-          <h2 className="font-semibold text-gray-800 mb-4 text-sm uppercase tracking-wide">Top Vendors</h2>
-          {vendors.length === 0 ? (
-            <div className="py-8 text-center">
-              <p className="text-sm text-gray-400">No data</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {vendors.slice(0, 5).map((v) => (
-                <div key={v.vendor_name}>
-                  <div className="flex justify-between text-sm mb-1.5">
-                    <span className="text-gray-700 truncate text-xs">{v.vendor_name}</span>
-                    <span className="text-gray-500 ml-2 text-xs font-medium">{v.count}</span>
-                  </div>
-                  <div className="w-full bg-gray-100 rounded-full h-1.5">
-                    <div
-                      className="h-1.5 rounded-full"
-                      style={{
-                        width: `${(v.count / maxVendorCount) * 100}%`,
-                        backgroundColor: '#009DD0',
-                      }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
+      <div className="mb-6">
         {/* Status distribution — donut pie chart */}
         <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
           <h2 className="font-semibold text-gray-800 mb-4 text-sm uppercase tracking-wide">Status Distribution</h2>
@@ -379,7 +346,6 @@ export default function DashboardPage() {
               {(recent.invoices || []).map((inv) => (
                 <tr key={inv.id} className="hover:bg-gray-50 transition-colors">
                   <td className="py-2.5 pr-4 text-gray-900 font-medium">{inv.invoice_number || '—'}</td>
-                  <td className="py-2.5 pr-4 text-gray-600">{inv.vendor_name || '—'}</td>
                   <td className="py-2.5 pr-4 text-gray-600">{inv.total_amount || '—'}</td>
                   <td className="py-2.5 pr-4 text-gray-400 text-xs">{formatDate(inv.invoice_date)}</td>
                   <td className="py-2.5 pr-4">
