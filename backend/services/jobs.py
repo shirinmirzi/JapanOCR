@@ -187,6 +187,42 @@ def get_jobs_paged(
     }
 
 
+def cancel_job(job_id: str) -> bool:
+    """
+    Atomically transition a job from an active state to 'cancelled'.
+
+    Only jobs currently in 'queued' or 'processing' state can be cancelled.
+
+    Args:
+        job_id: UUID of the job to cancel.
+
+    Returns:
+        True when the job was found in an active state and successfully
+        marked as 'cancelled'; False when the job was already in a terminal
+        state or was not found.
+    """
+    result = execute_write(
+        "UPDATE jobs SET status = 'cancelled' WHERE id = %s AND status IN ('queued', 'processing') RETURNING id",
+        (job_id,),
+    )
+    return result is not None
+
+
+def mark_stale_jobs_interrupted() -> None:
+    """
+    Mark all jobs stuck in 'processing' or 'queued' as 'interrupted'.
+
+    Called once during application startup to clean up stale job records
+    that were left in an active state by a previous server instance (e.g.
+    after a crash or a hot-reload). Prevents the UI from showing jobs as
+    perpetually running after a server restart.
+    """
+    execute_write(
+        "UPDATE jobs SET status = 'interrupted' WHERE status IN ('processing', 'queued')"
+    )
+    logger.info("Marked stale processing/queued jobs as interrupted on startup")
+
+
 def init_db():
     """
     Convenience wrapper that delegates to config.database.init_database.

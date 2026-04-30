@@ -17,7 +17,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from middleware.entra_auth import get_current_user
-from services.jobs import get_job, get_jobs_paged
+from services.jobs import cancel_job, get_job, get_jobs_paged
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/jobs")
@@ -71,3 +71,38 @@ async def get_job_by_id(
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     return job
+
+
+@router.post("/{job_id}/cancel")
+async def cancel_job_by_id(
+    job_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """
+    Request cancellation of an active (queued or processing) bulk job.
+
+    Sets the job status to 'cancelled' in the database. The background
+    processing thread checks this status before each file and will stop
+    as soon as it picks up the change.
+
+    Args:
+        job_id: UUID string of the job to cancel.
+        user: Injected authenticated user.
+
+    Returns:
+        Dict with 'cancelled' (bool) and 'status' of the job.
+
+    Raises:
+        HTTPException: 404 when no matching job is found.
+    """
+    job = get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    cancelled = cancel_job(job_id)
+    # Fetch once after the update to return the current state.
+    updated_job = get_job(job_id) or job
+    return {
+        "cancelled": cancelled,
+        "job_id": job_id,
+        "status": updated_job.get("status"),
+    }
