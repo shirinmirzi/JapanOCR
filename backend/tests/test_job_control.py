@@ -3,7 +3,7 @@ Japan OCR Tool - Job Control Tests
 
 Unit tests for the cancel_job, mark_stale_jobs_interrupted, and
 set_current_file functions added to services.jobs to address the
-continuous background processing loop and live-progress UI requirements.
+continuous background processing loop and live progress UI requirements.
 
 Author: SHIRIN MIRZI M K
 """
