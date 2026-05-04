@@ -1,8 +1,9 @@
 """
 Japan OCR Tool - Job Control Tests
 
-Unit tests for the cancel_job and mark_stale_jobs_interrupted functions
-added to services.jobs to address the continuous background processing loop.
+Unit tests for the cancel_job, mark_stale_jobs_interrupted, and
+set_current_file functions added to services.jobs to address the
+continuous background processing loop and live progress UI requirements.
 
 Author: SHIRIN MIRZI M K
 """
@@ -127,3 +128,77 @@ def test_mark_stale_jobs_interrupted_sets_interrupted_status(monkeypatch) -> Non
 
     sql = captured_sql[0]
     assert "interrupted" in sql.lower()
+
+
+# =============================================================================
+# set_current_file
+# =============================================================================
+
+
+def test_set_current_file_issues_update(monkeypatch) -> None:
+    """set_current_file must issue one UPDATE statement."""
+
+    calls = []
+
+    def fake_write(sql, params):
+        calls.append((sql, params))
+        return None
+
+    monkeypatch.setattr(jobs_service, "execute_write", fake_write)
+
+    jobs_service.set_current_file("job-123", "invoice_001.pdf")
+
+    assert len(calls) == 1
+
+
+def test_set_current_file_passes_filename_and_job_id(monkeypatch) -> None:
+    """set_current_file must pass the filename and job_id to the DB write."""
+
+    captured = []
+
+    def fake_write(sql, params):
+        captured.append(params)
+        return None
+
+    monkeypatch.setattr(jobs_service, "execute_write", fake_write)
+
+    jobs_service.set_current_file("job-abc", "test_invoice.pdf")
+
+    assert len(captured) == 1
+    params = captured[0]
+    assert "test_invoice.pdf" in params
+    assert "job-abc" in params
+
+
+def test_set_current_file_accepts_none_to_clear(monkeypatch) -> None:
+    """set_current_file must accept None to clear the current file field."""
+
+    captured = []
+
+    def fake_write(sql, params):
+        captured.append(params)
+        return None
+
+    monkeypatch.setattr(jobs_service, "execute_write", fake_write)
+
+    jobs_service.set_current_file("job-xyz", None)
+
+    assert len(captured) == 1
+    assert captured[0][0] is None
+
+
+def test_set_current_file_updates_correct_job(monkeypatch) -> None:
+    """set_current_file must target the supplied job_id in the WHERE clause."""
+
+    captured = []
+
+    def fake_write(sql, params):
+        captured.append(params)
+        return None
+
+    monkeypatch.setattr(jobs_service, "execute_write", fake_write)
+
+    jobs_service.set_current_file("specific-job-id", "file.pdf")
+
+    assert captured[0][-1] == "specific-job-id"
+
