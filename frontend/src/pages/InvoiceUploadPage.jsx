@@ -17,7 +17,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ImportantNotice from '../components/ImportantNotice';
-import { uploadInvoice, bulkUploadInvoices, getBulkJob, cancelBulkJob } from '../services/api';
+import { uploadInvoice, bulkUploadInvoices, getBulkJob, cancelBulkJob, getLogsPaged } from '../services/api';
 import { t } from '../i18n';
 import { useLang } from '../context/LangContext';
 
@@ -95,7 +95,37 @@ function SingleUpload() {
   });
   const [error, setError] = useState(null);
   const [invoiceType, setInvoiceType] = useState(() => localStorage.getItem('single_invoice_type') || 'daily');
+  const [liveLog, setLiveLog] = useState(null);
   const inputRef = useRef();
+  const liveLogPollRef = useRef(null);
+
+  // Poll the logs endpoint every 2 s while the OCR request is in flight so the
+  // user can see the "processing" log entry appear and update in real time.
+  useEffect(() => {
+    if (!loading || !file) {
+      if (liveLogPollRef.current) {
+        clearInterval(liveLogPollRef.current);
+        liveLogPollRef.current = null;
+      }
+      if (!loading) setLiveLog(null);
+      return;
+    }
+    const poll = async () => {
+      try {
+        const res = await getLogsPaged({ page: 1, page_size: 5, q: file.name });
+        const entry = res.items?.[0];
+        if (entry) setLiveLog(entry);
+      } catch {
+        // ignore polling errors — the upload request itself handles errors
+      }
+    };
+    poll();
+    liveLogPollRef.current = setInterval(poll, 2000);
+    return () => {
+      clearInterval(liveLogPollRef.current);
+      liveLogPollRef.current = null;
+    };
+  }, [loading, file]);
 
   const handleFile = (f) => {
     if (f && f.name.toLowerCase().endsWith('.pdf')) {
@@ -180,6 +210,17 @@ function SingleUpload() {
             <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-start gap-2">
               <span className="text-red-400 mt-0.5">⚠</span>
               {error}
+            </div>
+          )}
+
+          {loading && (
+            <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700 flex items-center gap-2">
+              <span className="animate-spin inline-block w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full flex-shrink-0" aria-hidden="true" />
+              <span>
+                {liveLog
+                  ? <>OCR running… <span className="font-mono text-xs break-all">{liveLog.filename}</span></>
+                  : 'Sending to OCR…'}
+              </span>
             </div>
           )}
 
@@ -547,8 +588,8 @@ function BulkUpload() {
             </div>
           )}
 
-          {/* Live processing status banner — visible while the job is actively running */}
-          {job && job.status === 'processing' && (
+          {/* Live processing status banner — visible while the job is queued or actively running */}
+          {job && (job.status === 'processing' || job.status === 'queued') && (
             <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4 mb-4">
               <div className="flex items-start gap-3">
                 <svg className="animate-spin mt-0.5 w-5 h-5 shrink-0 text-indigo-600" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -572,12 +613,12 @@ function BulkUpload() {
                         </span>
                       </div>
                     </div>
-                    {job.current_file && (
-                      <div className="flex items-start gap-2">
-                        <span className="text-xs text-indigo-600 font-medium w-28 shrink-0">{t('bulk_live_current_file')}</span>
-                        <span className="text-xs font-mono text-indigo-900 break-all">{job.current_file}</span>
-                      </div>
-                    )}
+                    <div className="flex items-start gap-2">
+                      <span className="text-xs text-indigo-600 font-medium w-28 shrink-0">{t('bulk_live_current_file')}</span>
+                      <span className="text-xs font-mono text-indigo-900 break-all">
+                        {job.current_file || (job.status === 'queued' ? 'Waiting to start…' : '—')}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
