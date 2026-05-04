@@ -547,6 +547,43 @@ function BulkUpload() {
             </div>
           )}
 
+          {/* Live processing status banner — visible while the job is actively running */}
+          {job && job.status === 'processing' && (
+            <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4 mb-4">
+              <div className="flex items-start gap-3">
+                <svg className="animate-spin mt-0.5 w-5 h-5 shrink-0 text-indigo-600" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                </svg>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-indigo-800">{t('bulk_live_processing')}</p>
+                  <div className="mt-2 flex flex-col gap-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-indigo-600 font-medium w-28 shrink-0">{t('bulk_live_progress')}</span>
+                      <div className="flex items-center gap-2 flex-1">
+                        <div className="flex-1 bg-indigo-200 rounded-full h-2 max-w-xs">
+                          <div
+                            className="h-2 rounded-full bg-indigo-600 transition-all duration-500"
+                            style={{ width: `${progress}%` }}
+                          />
+                        </div>
+                        <span className="text-xs text-indigo-700 font-semibold tabular-nums">
+                          {job.processed_count} / {job.total_count}
+                        </span>
+                      </div>
+                    </div>
+                    {job.current_file && (
+                      <div className="flex items-start gap-2">
+                        <span className="text-xs text-indigo-600 font-medium w-28 shrink-0">{t('bulk_live_current_file')}</span>
+                        <span className="text-xs font-mono text-indigo-900 break-all">{job.current_file}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">

@@ -205,6 +205,9 @@ def init_database():
             cur.execute(
                 "ALTER TABLE invoices ADD COLUMN IF NOT EXISTS order_number TEXT"
             )
+            cur.execute(
+                "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS current_file TEXT"
+            )
 
             # Indexes for jobs
             cur.execute(

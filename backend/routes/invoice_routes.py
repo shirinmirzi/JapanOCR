@@ -49,7 +49,7 @@ from services.file_metadata_client import (
     get_invoices_paged,
     soft_delete_invoice,
 )
-from services.jobs import create_job, get_job, increment_processed, set_job_results, set_job_status
+from services.jobs import create_job, get_job, increment_processed, set_current_file, set_job_results, set_job_status
 from services.logging_client import log_processing_start, update_log_entry
 
 logger = logging.getLogger(__name__)
@@ -610,6 +610,7 @@ def _background_bulk_process(job_id: str, files_data: list, user_id: str, invoic
                 "Job %s: %s — stopping before file %d/%d (%s)",
                 job_id, current_status, idx + 1, total, item["filename"],
             )
+            set_current_file(job_id, None)
             set_job_results(job_id, results)
             return
 
@@ -619,6 +620,7 @@ def _background_bulk_process(job_id: str, files_data: list, user_id: str, invoic
             "Job %s: processing file %d/%d — %s",
             job_id, idx + 1, total, filename,
         )
+        set_current_file(job_id, filename)
 
         log_id = log_processing_start(
             filename,
@@ -808,6 +810,7 @@ def _background_bulk_process(job_id: str, files_data: list, user_id: str, invoic
     final_status = (
         "failed" if failed == len(files_data) else "partial" if failed else "done"
     )
+    set_current_file(job_id, None)
     set_job_status(job_id, final_status)
     set_job_results(job_id, results)
 

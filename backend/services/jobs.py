@@ -75,6 +75,24 @@ def increment_processed(job_id: str):
     )
 
 
+def set_current_file(job_id: str, filename: str | None):
+    """
+    Persist the name of the file currently being processed for a job.
+
+    Called by the background processing thread immediately before each file
+    begins processing (and with None when the batch completes) so that
+    polling clients can display a real-time "currently processing" indicator.
+
+    Args:
+        job_id: UUID of the job to update.
+        filename: Name of the file now being processed, or None to clear.
+    """
+    execute_write(
+        "UPDATE jobs SET current_file = %s WHERE id = %s",
+        (filename, job_id),
+    )
+
+
 def set_job_results(job_id: str, results: dict):
     """
     Persist a per-file result snapshot to the job's results JSONB column.
