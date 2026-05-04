@@ -118,7 +118,7 @@ function SingleUpload() {
       }
     };
     poll();
-    const id = setInterval(poll, 2000);
+    const id = setInterval(poll, 3000);
     return () => clearInterval(id);
   }, [loading, file]);
 

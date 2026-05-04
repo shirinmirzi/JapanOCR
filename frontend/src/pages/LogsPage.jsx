@@ -256,6 +256,11 @@ export default function LogsPage() {
     const jobId = localStorage.getItem('bulk_job_id');
     if (!jobId) return;
     let mounted = true;
+    // Check the job status every 5 s — this is a lightweight endpoint call
+    // whose sole purpose is to update the hasActiveBulkJob flag that keeps the
+    // 3 s log-refresh interval alive.  The two intervals intentionally run at
+    // different rates: the job check is inexpensive (single row fetch) while
+    // the log poll fetches the full filtered page.
     const check = async () => {
       try {
         const job = await getBulkJob(jobId);
