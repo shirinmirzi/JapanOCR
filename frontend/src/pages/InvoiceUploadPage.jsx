@@ -97,21 +97,19 @@ function SingleUpload() {
   const [invoiceType, setInvoiceType] = useState(() => localStorage.getItem('single_invoice_type') || 'daily');
   const [liveLog, setLiveLog] = useState(null);
   const inputRef = useRef();
-  const liveLogPollRef = useRef(null);
 
   // Poll the logs endpoint every 2 s while the OCR request is in flight so the
   // user can see the "processing" log entry appear and update in real time.
+  // Uses a closure variable for the interval ID so cleanup always runs in the
+  // return statement regardless of which branch set it up.
   useEffect(() => {
     if (!loading || !file) {
-      if (liveLogPollRef.current) {
-        clearInterval(liveLogPollRef.current);
-        liveLogPollRef.current = null;
-      }
       if (!loading) setLiveLog(null);
       return;
     }
     const poll = async () => {
       try {
+        // Search by filename; the most recent matching entry is shown.
         const res = await getLogsPaged({ page: 1, page_size: 5, q: file.name });
         const entry = res.items?.[0];
         if (entry) setLiveLog(entry);
@@ -120,11 +118,8 @@ function SingleUpload() {
       }
     };
     poll();
-    liveLogPollRef.current = setInterval(poll, 2000);
-    return () => {
-      clearInterval(liveLogPollRef.current);
-      liveLogPollRef.current = null;
-    };
+    const id = setInterval(poll, 2000);
+    return () => clearInterval(id);
   }, [loading, file]);
 
   const handleFile = (f) => {

@@ -270,7 +270,9 @@ export default function LogsPage() {
       mounted = false;
       clearInterval(id);
     };
-  }, []); // only on mount — we just need to track the job that was active when the page opened
+  }, []); // Only on mount. LogsPage is a read-only view; new bulk jobs are started
+         // from InvoiceUploadPage, which causes a navigation that re-mounts this
+         // component and re-runs this effect with the updated localStorage value.
 
   // Auto-refresh every 3 s while there are actively-processing log entries,
   // while the page was recently mounted, OR while a bulk job is known to be
