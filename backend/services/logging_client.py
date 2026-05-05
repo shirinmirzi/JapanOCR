@@ -206,6 +206,7 @@ def get_logs_paged(
     user_id: str = None,
     source: str = None,
     module: str = None,
+    execution_folder: str = None,
 ) -> dict:
     """
     Return a paginated, filtered list of log entries.
@@ -224,6 +225,9 @@ def get_logs_paged(
         source: Filters on metadata->>'source' or metadata->>'module'.
         module: Module tag filter; "invoice" also includes legacy entries
             that predate module tagging.
+        execution_folder: When provided, only entries whose
+            metadata->>'execution_folder' matches this value are returned.
+            Used by the Logs page to pin to the currently active batch.
 
     Returns:
         Dict with keys: items (list of log dicts with flattened renamed_filename,
@@ -280,6 +284,10 @@ def get_logs_paged(
         else:
             conditions.append("metadata->>'module' = %s")
             params.append(module)
+
+    if execution_folder:
+        conditions.append("metadata->>'execution_folder' = %s")
+        params.append(execution_folder)
 
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
     count_sql = f"SELECT COUNT(*) as total FROM logs {where}"
