@@ -15,10 +15,11 @@
  * Author: SHIRIN MIRZI M K
  */
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { getLogsPaged, getBulkJob } from '../services/api';
+import { getLogsPaged } from '../services/api';
 import { useModule } from '../context/ModuleContext';
 import { t } from '../i18n';
 import { useLang } from '../context/LangContext';
+import { useActiveJob } from '../context/ActiveJobContext';
 
 const statusBadge = (status) => {
   const map = {
@@ -54,8 +55,7 @@ const isFailed = (s) => !!s && ['error', 'failed', 'not_found', 'timeout'].inclu
 const isProcessing = (s) => !!s && ['processing', 'queued', 'pending'].includes(s);
 const isIncomplete = (s) => !!s && ['incomplete', 'partial', 'cancelled'].includes(s);
 
-// Terminal statuses for bulk jobs — mirrors the set in InvoiceUploadPage
-const JOB_TERMINAL_STATUSES = new Set(['done', 'failed', 'cancelled', 'partial', 'interrupted']);
+// Terminal statuses for bulk jobs — mirrors the set in ActiveJobContext
 
 // A "processing" log entry is considered actively running only if it was
 // created within the last 10 minutes. Entries older than that are likely
@@ -161,6 +161,9 @@ export default function LogsPage() {
   // Read selected module from the global header toggle
   const { module } = useModule();
   useLang();
+  // Active job state comes from the shared context so it reflects the current
+  // job regardless of which page the user last visited.
+  const { job: activeJob, isActive: hasActiveBulkJob } = useActiveJob();
 
   const [data, setData] = useState({ items: [], total: 0, total_pages: 1 });
   const [page, setPage] = useState(1);
@@ -244,44 +247,11 @@ export default function LogsPage() {
   // in the DB the instant the user navigates to this page.
   const mountTimeRef = useRef(Date.now());
 
-  // Track whether the bulk job stored in localStorage is still active.
-  // This ensures the logs page keeps refreshing even when the "processing"
-  // log entries for the running job happen to be off the current page
-  // (e.g. the user is on page 2, or applied a filter).
-  const [hasActiveBulkJob, setHasActiveBulkJob] = useState(() => {
-    return !!localStorage.getItem('bulk_job_id');
-  });
-
-  useEffect(() => {
-    const jobId = localStorage.getItem('bulk_job_id');
-    if (!jobId) return;
-    let mounted = true;
-    // Check the job status every 5 s — this is a lightweight endpoint call
-    // whose sole purpose is to update the hasActiveBulkJob flag that keeps the
-    // 3 s log-refresh interval alive.  The two intervals intentionally run at
-    // different rates: the job check is inexpensive (single row fetch) while
-    // the log poll fetches the full filtered page.
-    const check = async () => {
-      try {
-        const job = await getBulkJob(jobId);
-        if (mounted) setHasActiveBulkJob(!JOB_TERMINAL_STATUSES.has(job.status));
-      } catch {
-        if (mounted) setHasActiveBulkJob(false);
-      }
-    };
-    check();
-    const id = setInterval(check, 5000);
-    return () => {
-      mounted = false;
-      clearInterval(id);
-    };
-  }, []); // Only on mount. LogsPage is a read-only view; new bulk jobs are started
-         // from InvoiceUploadPage, which causes a navigation that re-mounts this
-         // component and re-runs this effect with the updated localStorage value.
-
   // Auto-refresh every 3 s while there are actively-processing log entries,
   // while the page was recently mounted, OR while a bulk job is known to be
   // running (even if its log entries are not visible on the current page).
+  // hasActiveBulkJob now comes from the shared ActiveJobContext so it stays
+  // accurate across page navigation without a separate polling loop here.
   useEffect(() => {
     const hasActive = data.items.some(isActiveProcessing);
     const isFreshMount = Date.now() - mountTimeRef.current < MOUNT_POLL_WINDOW_MS;
@@ -354,6 +324,30 @@ export default function LogsPage() {
 
       {/* Compact filter bar — search + date range only */}
       <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 mb-4 flex flex-wrap gap-2 items-center">
+
+      {/* Live job status banner — visible while a bulk job is running */}
+      {hasActiveBulkJob && activeJob && (
+        <div className="w-full rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 flex items-center gap-3">
+          <svg className="animate-spin w-4 h-4 shrink-0 text-indigo-600" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+          </svg>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 min-w-0 flex-1">
+            <span className="text-xs font-semibold text-indigo-800">
+              Processing {activeJob.processed_count}/{activeJob.total_count} files
+            </span>
+            {activeJob.current_file && (
+              <span className="text-xs font-mono text-indigo-700 truncate max-w-xs">
+                {activeJob.current_file}
+              </span>
+            )}
+          </div>
+          <span className="text-xs text-indigo-500 shrink-0">
+            Logs refresh automatically
+          </span>
+        </div>
+      )}
+
         <input
           type="text"
           value={qInput}

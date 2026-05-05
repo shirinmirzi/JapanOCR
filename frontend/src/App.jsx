@@ -19,6 +19,7 @@ import { msalInstance } from './msalConfig';
 import { UserProvider } from './context/UserContext';
 import { ModuleProvider } from './context/ModuleContext';
 import { LangProvider } from './context/LangContext';
+import { ActiveJobProvider } from './context/ActiveJobContext';
 import PrivateRoute from './components/PrivateRoute';
 import MainLayout from './layouts/MainLayout';
 import LoginPage from './pages/LoginPage';
@@ -32,6 +33,7 @@ export default function App() {
     <MsalProvider instance={msalInstance}>
       <UserProvider>
         <LangProvider>
+        <ActiveJobProvider>
         <ModuleProvider>
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <Routes>
@@ -54,6 +56,7 @@ export default function App() {
           </Routes>
         </BrowserRouter>
         </ModuleProvider>
+        </ActiveJobProvider>
         </LangProvider>
       </UserProvider>
     </MsalProvider>
