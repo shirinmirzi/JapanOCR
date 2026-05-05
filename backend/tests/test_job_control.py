@@ -1,12 +1,14 @@
 """
 Japan OCR Tool - Job Control Tests
 
-Unit tests for the cancel_job, mark_stale_jobs_interrupted, and
-set_current_file functions added to services.jobs to address the
+Unit tests for the cancel_job, mark_stale_jobs_interrupted, set_current_file,
+and cancel event registry functions in services.jobs that address the
 continuous background processing loop and live progress UI requirements.
 
 Author: SHIRIN MIRZI M K
 """
+
+import threading
 
 import services.jobs as jobs_service
 
@@ -202,3 +204,107 @@ def test_set_current_file_updates_correct_job(monkeypatch) -> None:
 
     assert captured[0][-1] == "specific-job-id"
 
+
+# =============================================================================
+# cancel event registry
+# =============================================================================
+
+
+def test_register_job_cancel_event_returns_threading_event() -> None:
+    """register_job_cancel_event must return an unset threading.Event."""
+    event = jobs_service.register_job_cancel_event("reg-job-1")
+    try:
+        assert isinstance(event, threading.Event)
+        assert not event.is_set()
+    finally:
+        jobs_service.unregister_job_cancel_event("reg-job-1")
+
+
+def test_signal_job_cancelled_sets_registered_event() -> None:
+    """signal_job_cancelled must set the event for the given job_id."""
+    event = jobs_service.register_job_cancel_event("sig-job-1")
+    try:
+        jobs_service.signal_job_cancelled("sig-job-1")
+        assert event.is_set()
+    finally:
+        jobs_service.unregister_job_cancel_event("sig-job-1")
+
+
+def test_signal_job_cancelled_is_noop_for_unknown_job() -> None:
+    """signal_job_cancelled must not raise when job_id is not registered."""
+    jobs_service.signal_job_cancelled("nonexistent-job-id")
+
+
+def test_signal_all_jobs_cancelled_sets_all_events() -> None:
+    """signal_all_jobs_cancelled must set every registered event."""
+    ev1 = jobs_service.register_job_cancel_event("all-job-1")
+    ev2 = jobs_service.register_job_cancel_event("all-job-2")
+    try:
+        jobs_service.signal_all_jobs_cancelled()
+        assert ev1.is_set()
+        assert ev2.is_set()
+    finally:
+        jobs_service.unregister_job_cancel_event("all-job-1")
+        jobs_service.unregister_job_cancel_event("all-job-2")
+
+
+def test_unregister_job_cancel_event_removes_event() -> None:
+    """After unregister, signal_job_cancelled must not set the removed event."""
+    event = jobs_service.register_job_cancel_event("unreg-job-1")
+    jobs_service.unregister_job_cancel_event("unreg-job-1")
+    jobs_service.signal_job_cancelled("unreg-job-1")
+    assert not event.is_set()
+
+
+def test_unregister_job_cancel_event_is_noop_for_unknown_job() -> None:
+    """unregister_job_cancel_event must not raise for an unknown job_id."""
+    jobs_service.unregister_job_cancel_event("never-registered")
+
+
+# =============================================================================
+# cancel_job — updated behaviour (signals in-process event)
+# =============================================================================
+
+
+def test_cancel_job_signals_event_when_update_succeeds(monkeypatch) -> None:
+    """cancel_job must set the cancel event when the DB update matches a row."""
+    monkeypatch.setattr(jobs_service, "execute_write", lambda sql, params: {"id": params[0]})
+
+    event = jobs_service.register_job_cancel_event("cancel-signal-job")
+    try:
+        jobs_service.cancel_job("cancel-signal-job")
+        assert event.is_set()
+    finally:
+        jobs_service.unregister_job_cancel_event("cancel-signal-job")
+
+
+def test_cancel_job_does_not_signal_event_when_update_fails(monkeypatch) -> None:
+    """cancel_job must NOT set the cancel event when no row was updated."""
+    monkeypatch.setattr(jobs_service, "execute_write", lambda sql, params: None)
+
+    event = jobs_service.register_job_cancel_event("no-cancel-signal-job")
+    try:
+        jobs_service.cancel_job("no-cancel-signal-job")
+        assert not event.is_set()
+    finally:
+        jobs_service.unregister_job_cancel_event("no-cancel-signal-job")
+
+
+# =============================================================================
+# mark_stale_jobs_interrupted — updated behaviour (signals all events)
+# =============================================================================
+
+
+def test_mark_stale_jobs_interrupted_signals_all_events(monkeypatch) -> None:
+    """mark_stale_jobs_interrupted must signal all registered cancel events."""
+    monkeypatch.setattr(jobs_service, "execute_write", lambda sql, params=None: None)
+
+    ev1 = jobs_service.register_job_cancel_event("stale-job-a")
+    ev2 = jobs_service.register_job_cancel_event("stale-job-b")
+    try:
+        jobs_service.mark_stale_jobs_interrupted()
+        assert ev1.is_set()
+        assert ev2.is_set()
+    finally:
+        jobs_service.unregister_job_cancel_event("stale-job-a")
+        jobs_service.unregister_job_cancel_event("stale-job-b")

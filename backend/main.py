@@ -63,6 +63,11 @@ async def lifespan(app: FastAPI):
         mark_stale_jobs_interrupted()
     except Exception as e:
         logger.warning("Could not mark stale jobs as interrupted: %s", e)
+    try:
+        from services.logging_client import mark_stale_logs_interrupted
+        mark_stale_logs_interrupted()
+    except Exception as e:
+        logger.warning("Could not mark stale log entries as interrupted: %s", e)
     yield
     close_connection_pool()
     logger.info("Connection pool closed")

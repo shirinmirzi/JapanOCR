@@ -22,6 +22,7 @@ import logging
 import os
 import re
 import tempfile
+import threading
 from datetime import datetime, timezone
 
 from fastapi import (
@@ -49,7 +50,16 @@ from services.file_metadata_client import (
     get_invoices_paged,
     soft_delete_invoice,
 )
-from services.jobs import create_job, get_job, increment_processed, set_current_file, set_job_results, set_job_status
+from services.jobs import (
+    create_job,
+    get_job,
+    increment_processed,
+    register_job_cancel_event,
+    set_current_file,
+    set_job_results,
+    set_job_status,
+    unregister_job_cancel_event,
+)
 from services.logging_client import log_processing_start, update_log_entry
 
 logger = logging.getLogger(__name__)
@@ -574,14 +584,15 @@ async def _process_single_file(
         raise
 
 
-def _background_bulk_process(job_id: str, files_data: list, user_id: str, invoice_type: str = "daily", execution_folder: str = None):
+def _background_bulk_process(job_id: str, files_data: list, user_id: str, invoice_type: str = "daily", execution_folder: str = None, cancel_event: threading.Event | None = None):
     """
     Process a batch of pre-read PDF files in a background thread.
 
     Updates job status and writes partial results after each file so the
     upload page can display live progress without polling the database.
-    Checks the job's DB status before each file so that a cancellation or
-    server-restart interrupt is honoured promptly.
+    Checks the cancel_event (fast in-process signal) and the job's DB status
+    before each file so that a cancellation or server-restart interrupt is
+    honoured promptly — even while a blocking OCR call is in flight.
 
     Args:
         job_id: UUID of the parent job record to update throughout.
@@ -592,6 +603,9 @@ def _background_bulk_process(job_id: str, files_data: list, user_id: str, invoic
         invoice_type: "daily" or "monthly" — selects OCR prompt and routing.
         execution_folder: Shared execution folder name for all files in this
             batch; generated from current UTC time if not supplied.
+        cancel_event: Optional threading.Event registered by the request
+            handler.  When set the thread stops at its next check point
+            without waiting for a DB poll.
     """
     if execution_folder is None:
         execution_folder = _build_execution_folder()
@@ -599,19 +613,25 @@ def _background_bulk_process(job_id: str, files_data: list, user_id: str, invoic
     results = {}
     total = len(files_data)
     for idx, item in enumerate(files_data):
-        # Check for cancellation or external interruption before each file.
-        try:
-            current_job = get_job(job_id)
-            current_status = current_job.get("status") if current_job else None
-        except Exception:
-            current_status = None
-        if current_status in ("cancelled", "interrupted"):
+        # Check for cancellation — fast in-process event first, then DB fallback.
+        # Treat any non-running status (including None from a DB error) as a
+        # stop signal so the thread never continues in an ambiguous state.
+        if cancel_event is not None and cancel_event.is_set():
+            current_status = "interrupted"
+        else:
+            try:
+                current_job = get_job(job_id)
+                current_status = current_job.get("status") if current_job else "interrupted"
+            except Exception:
+                current_status = "interrupted"
+        if current_status not in ("queued", "processing"):
             logger.info(
                 "Job %s: %s — stopping before file %d/%d (%s)",
                 job_id, current_status, idx + 1, total, item["filename"],
             )
             set_current_file(job_id, None)
             set_job_results(job_id, results)
+            unregister_job_cancel_event(job_id)
             return
 
         filename = item["filename"]
@@ -671,6 +691,17 @@ def _background_bulk_process(job_id: str, files_data: list, user_id: str, invoic
                 continue
 
             for page_idx, page_content in enumerate(pages_content):
+                # Check for cancellation before each blocking OCR page call.
+                if cancel_event is not None and cancel_event.is_set():
+                    logger.info(
+                        "Job %s: cancelled before page %d of %s",
+                        job_id, page_idx + 1, filename,
+                    )
+                    update_log_entry(log_id, "interrupted", error="Job cancelled")
+                    set_current_file(job_id, None)
+                    set_job_results(job_id, results)
+                    unregister_job_cancel_event(job_id)
+                    return
                 page_num = page_idx + 1
                 page_filename = f"{stem}_page{page_num}{ext}"
                 page_result = _process_monthly_page(
@@ -729,6 +760,19 @@ def _background_bulk_process(job_id: str, files_data: list, user_id: str, invoic
         finally:
             with contextlib.suppress(Exception):
                 os.unlink(tmp_path)
+
+        # Check for cancellation after the blocking OCR call completes so the
+        # file is not uploaded or recorded when the job has been stopped.
+        if cancel_event is not None and cancel_event.is_set():
+            logger.info(
+                "Job %s: cancelled after OCR for file %d/%d — %s",
+                job_id, idx + 1, total, filename,
+            )
+            update_log_entry(log_id, "interrupted", error="Job cancelled")
+            set_current_file(job_id, None)
+            set_job_results(job_id, results)
+            unregister_job_cancel_event(job_id)
+            return
 
         # Determine output subfolder and renamed filename
         renamed_filename = None
@@ -813,6 +857,7 @@ def _background_bulk_process(job_id: str, files_data: list, user_id: str, invoic
     set_current_file(job_id, None)
     set_job_status(job_id, final_status)
     set_job_results(job_id, results)
+    unregister_job_cancel_event(job_id)
 
 
 _VALID_INVOICE_TYPES = {"daily", "monthly"}
@@ -894,6 +939,7 @@ async def bulk_upload_invoices(
         content = await f.read()
         files_data.append({"filename": f.filename, "content": content})
 
+    cancel_event = register_job_cancel_event(job_id)
     background_tasks.add_task(
         _background_bulk_process,
         job_id,
@@ -901,6 +947,7 @@ async def bulk_upload_invoices(
         user["username"],
         invoice_type,
         execution_folder,
+        cancel_event,
     )
 
     return {"job_id": job_id, "accepted": len(files), "filenames": filenames, "execution_folder": execution_folder}
