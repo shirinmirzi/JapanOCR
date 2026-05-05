@@ -50,6 +50,9 @@ export function JobProvider({ children }) {
     () => localStorage.getItem('bulk_job_id') || null,
   );
   const [bulkJob, setBulkJob] = useState(null);
+  const [executionFolder, setExecutionFolder] = useState(
+    () => localStorage.getItem('bulk_execution_folder') || null,
+  );
   const pollRef = useRef(null);
 
   const stopBulkPolling = useCallback(() => {
@@ -90,11 +93,20 @@ export function JobProvider({ children }) {
     return stopBulkPolling;
   }, [bulkJobId, pollBulkJob, stopBulkPolling]);
 
-  /** Call after a new bulk job has been created on the backend. */
-  const startBulkJob = useCallback((jobId) => {
+  /** Call after a new bulk job has been created on the backend.
+   *
+   * @param {string} jobId - UUID of the new bulk job.
+   * @param {string} [execFolder] - Execution folder for the batch (e.g.
+   *   "20250430_143022"), returned by the bulk-upload endpoint.  When
+   *   provided it is stored in context and localStorage so the Logs page
+   *   can reference the active job's folder without an extra API call.
+   */
+  const startBulkJob = useCallback((jobId, execFolder) => {
     localStorage.setItem('bulk_job_id', jobId);
     localStorage.setItem('upload_mode', 'bulk');
+    if (execFolder) localStorage.setItem('bulk_execution_folder', execFolder);
     setBulkJobId(jobId);
+    setExecutionFolder(execFolder || null);
   }, []);
 
   /**
@@ -112,8 +124,10 @@ export function JobProvider({ children }) {
     stopBulkPolling();
     localStorage.removeItem('bulk_job_id');
     localStorage.removeItem('upload_mode');
+    localStorage.removeItem('bulk_execution_folder');
     setBulkJobId(null);
     setBulkJob(null);
+    setExecutionFolder(null);
   }, [stopBulkPolling]);
 
   // True while a bulk job is queued or running (optimistically true before the
@@ -149,6 +163,7 @@ export function JobProvider({ children }) {
         bulkJobId,
         bulkJob,
         isBulkJobActive,
+        executionFolder,
         startBulkJob,
         updateBulkJob,
         resetBulkJob,

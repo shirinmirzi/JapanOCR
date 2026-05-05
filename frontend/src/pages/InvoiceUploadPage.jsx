@@ -454,7 +454,7 @@ function BulkUpload() {
     setError(null);
     try {
       const data = await bulkUploadInvoices(files, invoiceType);
-      startBulkJob(data.job_id);
+      startBulkJob(data.job_id, data.execution_folder);
     } catch (err) {
       setError(err?.response?.data?.detail || err.message || 'Upload failed');
       setRunning(false);

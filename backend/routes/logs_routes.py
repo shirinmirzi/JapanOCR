@@ -37,6 +37,7 @@ async def logs_paged(
     user_id: str = Query(None),
     source: str = Query(None),
     module: str = Query(None),
+    execution_folder: str = Query(None),
     user: dict = Depends(get_current_user),
 ):
     """
@@ -60,6 +61,7 @@ async def logs_paged(
         user_id=user_id,
         source=source,
         module=module,
+        execution_folder=execution_folder,
     )
 
 

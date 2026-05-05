@@ -216,18 +216,23 @@ export default function LogsPage() {
         module: module || undefined,
       };
       const result = await getLogsPaged(params);
-      // Discard stale responses from superseded requests
+      // Discard stale responses from superseded requests.
+      // The finally block still runs and handles releasing the loading state.
       if (myId !== loadIdRef.current) return;
       setData(result);
       setInitialLoadDone(true);
     } catch (e) {
-      if (myId === loadIdRef.current) {
-        console.error(e);
-        // Mark load as done even on error so the UI doesn't stay blank
+      if (myId === loadIdRef.current) console.error(e);
+    } finally {
+      // Clear loading and mark the initial load complete for:
+      //   (a) the most-recent request (any type), and
+      //   (b) any superseded non-background request — prevents the
+      //       "Loading…" placeholder from getting stuck when a background
+      //       poll fires before the initial load returns (success or error).
+      if (myId === loadIdRef.current || !isBackground) {
+        setLoading(false);
         setInitialLoadDone(true);
       }
-    } finally {
-      if (myId === loadIdRef.current) setLoading(false);
     }
   }, [page, q, since, until, module]);
 
@@ -246,18 +251,23 @@ export default function LogsPage() {
   // in the DB the instant the user navigates to this page.
   const mountTimeRef = useRef(Date.now());
 
-  // Auto-refresh every 3 s while there are actively-processing log entries,
-  // while the page was recently mounted, OR while a job is known to be running
-  // (bulk or single) — even if its log entries are not visible on the current
-  // page (e.g. the user is on page 2, or applied a filter).
+  // Auto-refresh while there are actively-processing log entries, while the
+  // page was recently mounted, OR while a job is known to be running (bulk or
+  // single) — even if its log entries are not visible on the current page
+  // (e.g. the user is on page 2, or applied a filter).
   // hasActiveJob comes from JobContext so it stays accurate across navigation.
+  // When a job is active but no entries are visible yet (race window between
+  // job start and first log_processing_start write), poll at 1.5 s instead of
+  // 3 s so entries surface quickly without hammering the server.
   useEffect(() => {
     const hasActive = data.items.some(isActiveProcessing);
     const isFreshMount = Date.now() - mountTimeRef.current < MOUNT_POLL_WINDOW_MS;
     if (!hasActive && !isFreshMount && !hasActiveJob) return;
-    const id = setInterval(() => loadRef.current(true), 3000);
+    const noEntriesYet = hasActiveJob && initialLoadDone && data.items.length === 0;
+    const pollMs = noEntriesYet ? 1500 : 3000;
+    const id = setInterval(() => loadRef.current(true), pollMs);
     return () => clearInterval(id);
-  }, [data.items, hasActiveJob]);
+  }, [data.items, hasActiveJob, initialLoadDone]);
 
   const toggleExpand = (key) =>
     setExpanded((prev) => {
