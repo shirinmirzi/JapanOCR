@@ -15,7 +15,7 @@
  * Author: SHIRIN MIRZI M K
  */
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { getLogsPaged } from '../services/api';
+import { getLogsPaged, getBulkJob } from '../services/api';
 import { useModule } from '../context/ModuleContext';
 import { t } from '../i18n';
 import { useLang } from '../context/LangContext';
@@ -53,6 +53,9 @@ const isComplete = (s) => !!s && ['success', 'processed', 'completed', 'done'].i
 const isFailed = (s) => !!s && ['error', 'failed', 'not_found', 'timeout'].includes(s);
 const isProcessing = (s) => !!s && ['processing', 'queued', 'pending'].includes(s);
 const isIncomplete = (s) => !!s && ['incomplete', 'partial', 'cancelled'].includes(s);
+
+// Terminal statuses for bulk jobs — mirrors the set in InvoiceUploadPage
+const JOB_TERMINAL_STATUSES = new Set(['done', 'failed', 'cancelled', 'partial', 'interrupted']);
 
 // A "processing" log entry is considered actively running only if it was
 // created within the last 10 minutes. Entries older than that are likely
@@ -241,16 +244,51 @@ export default function LogsPage() {
   // in the DB the instant the user navigates to this page.
   const mountTimeRef = useRef(Date.now());
 
-  // Auto-refresh every 3 s while there are actively-processing entries OR
-  // while the page was recently mounted (so a just-started single upload
-  // becomes visible quickly without requiring a manual refresh).
+  // Track whether the bulk job stored in localStorage is still active.
+  // This ensures the logs page keeps refreshing even when the "processing"
+  // log entries for the running job happen to be off the current page
+  // (e.g. the user is on page 2, or applied a filter).
+  const [hasActiveBulkJob, setHasActiveBulkJob] = useState(() => {
+    return !!localStorage.getItem('bulk_job_id');
+  });
+
+  useEffect(() => {
+    const jobId = localStorage.getItem('bulk_job_id');
+    if (!jobId) return;
+    let mounted = true;
+    // Check the job status every 5 s — this is a lightweight endpoint call
+    // whose sole purpose is to update the hasActiveBulkJob flag that keeps the
+    // 3 s log-refresh interval alive.  The two intervals intentionally run at
+    // different rates: the job check is inexpensive (single row fetch) while
+    // the log poll fetches the full filtered page.
+    const check = async () => {
+      try {
+        const job = await getBulkJob(jobId);
+        if (mounted) setHasActiveBulkJob(!JOB_TERMINAL_STATUSES.has(job.status));
+      } catch {
+        if (mounted) setHasActiveBulkJob(false);
+      }
+    };
+    check();
+    const id = setInterval(check, 5000);
+    return () => {
+      mounted = false;
+      clearInterval(id);
+    };
+  }, []); // Only on mount. LogsPage is a read-only view; new bulk jobs are started
+         // from InvoiceUploadPage, which causes a navigation that re-mounts this
+         // component and re-runs this effect with the updated localStorage value.
+
+  // Auto-refresh every 3 s while there are actively-processing log entries,
+  // while the page was recently mounted, OR while a bulk job is known to be
+  // running (even if its log entries are not visible on the current page).
   useEffect(() => {
     const hasActive = data.items.some(isActiveProcessing);
     const isFreshMount = Date.now() - mountTimeRef.current < MOUNT_POLL_WINDOW_MS;
-    if (!hasActive && !isFreshMount) return;
+    if (!hasActive && !isFreshMount && !hasActiveBulkJob) return;
     const id = setInterval(() => loadRef.current(true), 3000);
     return () => clearInterval(id);
-  }, [data.items]);
+  }, [data.items, hasActiveBulkJob]);
 
   const toggleExpand = (key) =>
     setExpanded((prev) => {
