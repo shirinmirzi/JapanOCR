@@ -14,12 +14,13 @@
  * Dependencies: services/api, i18n, ImportantNotice component
  * Author: SHIRIN MIRZI M K
  */
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ImportantNotice from '../components/ImportantNotice';
-import { uploadInvoice, bulkUploadInvoices, getBulkJob, cancelBulkJob, getLogsPaged } from '../services/api';
+import { uploadInvoice, bulkUploadInvoices, cancelBulkJob, getLogsPaged } from '../services/api';
 import { t } from '../i18n';
 import { useLang } from '../context/LangContext';
+import { useActiveJob } from '../context/ActiveJobContext';
 
 // ── Invoice type toggle ────────────────────────────────────────────────────────
 
@@ -326,7 +327,6 @@ function SingleUpload() {
 // ── Bulk upload ────────────────────────────────────────────────────────────────
 
 const TERMINAL_STATUSES = new Set(['done', 'failed', 'cancelled', 'partial', 'interrupted']);
-const POLL_INTERVAL = 1200;
 
 const statusBadge = (status) => {
   const map = {
@@ -396,46 +396,18 @@ function BulkUpload() {
   const navigate = useNavigate();
   const inputRef = useRef();
   const [files, setFiles] = useState([]);
-  const [jobId, setJobId] = useState(() => localStorage.getItem('bulk_job_id') || null);
-  const [job, setJob] = useState(null);
-  const [rows, setRows] = useState([]);
+  // Job identity and state come from the shared context so they survive
+  // navigation between the Upload and Logs pages.
+  const { jobId, job, setJob, setJobId, clearJob } = useActiveJob();
+  // `running` is only needed for the brief window while the bulk-upload HTTP
+  // request is in flight (before the job ID has been returned).
   const [running, setRunning] = useState(false);
   const [error, setError] = useState(null);
   const [invoiceType, setInvoiceType] = useState('daily');
-  const pollRef = useRef(null);
 
-  const stopPolling = useCallback(() => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-  }, []);
-
-  const pollJob = useCallback(
-    async (id) => {
-      try {
-        const data = await getBulkJob(id);
-        setJob(data);
-        setRows(buildRowsFromJob(data));
-        if (TERMINAL_STATUSES.has(data.status)) {
-          stopPolling();
-          setRunning(false);
-        }
-      } catch {
-        stopPolling();
-        setRunning(false);
-      }
-    },
-    [stopPolling]
-  );
-
-  useEffect(() => {
-    if (jobId) {
-      pollJob(jobId);
-      pollRef.current = setInterval(() => pollJob(jobId), POLL_INTERVAL);
-    }
-    return () => stopPolling();
-  }, [jobId, pollJob, stopPolling]);
+  // Derive rows from the shared job state rather than maintaining a separate
+  // local copy that can become stale after navigation.
+  const rows = useMemo(() => buildRowsFromJob(job), [job]);
 
   const handleFiles = (e) => {
     const selected = Array.from(e.target.files).filter((f) =>
@@ -451,9 +423,9 @@ function BulkUpload() {
     setError(null);
     try {
       const data = await bulkUploadInvoices(files, invoiceType);
-      localStorage.setItem('bulk_job_id', data.job_id);
-      localStorage.setItem('upload_mode', 'bulk');
+      // setJobId (from context) persists to localStorage automatically.
       setJobId(data.job_id);
+      setRunning(false);
     } catch (err) {
       setError(err?.response?.data?.detail || err.message || 'Upload failed');
       setRunning(false);
@@ -464,13 +436,9 @@ function BulkUpload() {
     if (!jobId) return;
     try {
       await cancelBulkJob(jobId);
+      // Optimistically mark the job as cancelled; the context will confirm
+      // this on the next poll cycle.
       setJob((prev) => (prev ? { ...prev, status: 'cancelled' } : prev));
-      setRows((prev) =>
-        prev.map((r) =>
-          r.status === 'pending' || r.status === 'processing' ? { ...r, status: 'cancelled' } : r
-        )
-      );
-      stopPolling();
       setRunning(false);
     } catch (err) {
       setError(err?.response?.data?.detail || err.message || 'Cancel failed');
@@ -478,12 +446,8 @@ function BulkUpload() {
   };
 
   const handleReset = () => {
-    stopPolling();
-    localStorage.removeItem('bulk_job_id');
-    localStorage.removeItem('upload_mode');
-    setJobId(null);
-    setJob(null);
-    setRows([]);
+    // clearJob (from context) clears localStorage and stops polling.
+    clearJob();
     setFiles([]);
     setRunning(false);
     setError(null);

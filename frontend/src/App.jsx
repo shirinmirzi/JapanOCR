@@ -19,6 +19,7 @@ import { msalInstance } from './msalConfig';
 import { UserProvider } from './context/UserContext';
 import { ModuleProvider } from './context/ModuleContext';
 import { LangProvider } from './context/LangContext';
+import { ActiveJobProvider } from './context/ActiveJobContext';
 import PrivateRoute from './components/PrivateRoute';
 import MainLayout from './layouts/MainLayout';
 import LoginPage from './pages/LoginPage';
@@ -33,6 +34,7 @@ export default function App() {
       <UserProvider>
         <LangProvider>
         <ModuleProvider>
+        <ActiveJobProvider>
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
@@ -53,6 +55,7 @@ export default function App() {
             <Route path="*" element={<Navigate to="/upload" replace />} />
           </Routes>
         </BrowserRouter>
+        </ActiveJobProvider>
         </ModuleProvider>
         </LangProvider>
       </UserProvider>
