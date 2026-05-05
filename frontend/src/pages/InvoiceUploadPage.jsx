@@ -14,12 +14,13 @@
  * Dependencies: services/api, i18n, ImportantNotice component
  * Author: SHIRIN MIRZI M K
  */
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ImportantNotice from '../components/ImportantNotice';
-import { uploadInvoice, bulkUploadInvoices, getBulkJob, cancelBulkJob, getLogsPaged } from '../services/api';
+import { uploadInvoice, bulkUploadInvoices, cancelBulkJob, getLogsPaged } from '../services/api';
 import { t } from '../i18n';
 import { useLang } from '../context/LangContext';
+import { useJob } from '../context/JobContext';
 
 // ── Invoice type toggle ────────────────────────────────────────────────────────
 
@@ -81,6 +82,7 @@ const MONTHLY_FIELD_LABELS = [
 ];
 
 function SingleUpload() {
+  const { startSingleUpload, endSingleUpload, singleUploading } = useJob();
   const [file, setFile] = useState(null);
   const [fileName, setFileName] = useState(() => localStorage.getItem('single_file_name') || null);
   const [dragging, setDragging] = useState(false);
@@ -98,19 +100,23 @@ function SingleUpload() {
   const [liveLog, setLiveLog] = useState(null);
   const inputRef = useRef();
 
-  // Poll the logs endpoint every 2 s while the OCR request is in flight so the
+  // Poll the logs endpoint every 3 s while the OCR request is in flight so the
   // user can see the "processing" log entry appear and update in real time.
-  // Uses a closure variable for the interval ID so cleanup always runs in the
-  // return statement regardless of which branch set it up.
+  // Also runs when singleUploading is true but `file` is null — this handles
+  // the case where the user navigated away and back while the upload was still
+  // running (file state is lost on unmount but context flag persists).
   useEffect(() => {
-    if (!loading || !file) {
-      if (!loading) setLiveLog(null);
+    const isActive = loading || singleUploading;
+    if (!isActive) {
+      setLiveLog(null);
       return;
     }
+    const searchName = file?.name || localStorage.getItem('single_upload_filename') || '';
+    if (!searchName) return;
     const poll = async () => {
       try {
         // Search by filename; the most recent matching entry is shown.
-        const res = await getLogsPaged({ page: 1, page_size: 5, q: file.name });
+        const res = await getLogsPaged({ page: 1, page_size: 5, q: searchName });
         const entry = res.items?.[0];
         if (entry) setLiveLog(entry);
       } catch {
@@ -120,7 +126,7 @@ function SingleUpload() {
     poll();
     const id = setInterval(poll, 3000);
     return () => clearInterval(id);
-  }, [loading, file]);
+  }, [loading, singleUploading, file]);
 
   const handleFile = (f) => {
     if (f && f.name.toLowerCase().endsWith('.pdf')) {
@@ -145,6 +151,7 @@ function SingleUpload() {
   const handleProcess = async () => {
     if (!file) return;
     setLoading(true);
+    startSingleUpload(file.name);
     setError(null);
     try {
       const data = await uploadInvoice(file, invoiceType);
@@ -155,6 +162,9 @@ function SingleUpload() {
       setError(err?.response?.data?.detail || err.message || 'Processing failed');
     } finally {
       setLoading(false);
+      // endSingleUpload clears context + localStorage flag; runs even if the
+      // component is unmounted (context lives at the root).
+      endSingleUpload();
     }
   };
 
@@ -163,6 +173,7 @@ function SingleUpload() {
     setFileName(null);
     setResult(null);
     setError(null);
+    endSingleUpload();
     localStorage.removeItem('single_upload_result');
     localStorage.removeItem('single_file_name');
     localStorage.removeItem('single_invoice_type');
@@ -219,6 +230,19 @@ function SingleUpload() {
             </div>
           )}
 
+          {/* Show processing indicator when context flag is set but local loading
+              is false — this happens after navigating away and back mid-upload. */}
+          {!loading && singleUploading && (
+            <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700 flex items-center gap-2">
+              <span className="animate-spin inline-block w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full flex-shrink-0" aria-hidden="true" />
+              <span>
+                {liveLog
+                  ? <>OCR running… <span className="font-mono text-xs break-all">{liveLog.filename}</span></>
+                  : 'Processing in background…'}
+              </span>
+            </div>
+          )}
+
           <div className="mt-5 flex gap-3">
             <button
               onClick={() => inputRef.current?.click()}
@@ -228,11 +252,11 @@ function SingleUpload() {
             </button>
             <button
               onClick={handleProcess}
-              disabled={!file || loading}
+              disabled={!file || loading || singleUploading}
               className="px-6 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-50 transition-opacity hover:opacity-90"
               style={{ backgroundColor: '#009DD0' }}
             >
-              {loading ? t('upload_processing') : t('upload_process')}
+              {loading || singleUploading ? t('upload_processing') : t('upload_process')}
             </button>
           </div>
         </div>
@@ -326,7 +350,6 @@ function SingleUpload() {
 // ── Bulk upload ────────────────────────────────────────────────────────────────
 
 const TERMINAL_STATUSES = new Set(['done', 'failed', 'cancelled', 'partial', 'interrupted']);
-const POLL_INTERVAL = 1200;
 
 const statusBadge = (status) => {
   const map = {
@@ -393,49 +416,29 @@ function buildRowsFromJob(job) {
 }
 
 function BulkUpload() {
+  // Pull job state and actions from the shared context so that polling
+  // continues across route changes and both pages share the same data.
+  const {
+    bulkJobId: jobId,
+    bulkJob: job,
+    startBulkJob,
+    updateBulkJob,
+    resetBulkJob,
+    stopBulkPolling,
+  } = useJob();
+
   const navigate = useNavigate();
   const inputRef = useRef();
   const [files, setFiles] = useState([]);
-  const [jobId, setJobId] = useState(() => localStorage.getItem('bulk_job_id') || null);
-  const [job, setJob] = useState(null);
   const [rows, setRows] = useState([]);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState(null);
   const [invoiceType, setInvoiceType] = useState('daily');
-  const pollRef = useRef(null);
 
-  const stopPolling = useCallback(() => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-  }, []);
-
-  const pollJob = useCallback(
-    async (id) => {
-      try {
-        const data = await getBulkJob(id);
-        setJob(data);
-        setRows(buildRowsFromJob(data));
-        if (TERMINAL_STATUSES.has(data.status)) {
-          stopPolling();
-          setRunning(false);
-        }
-      } catch {
-        stopPolling();
-        setRunning(false);
-      }
-    },
-    [stopPolling]
-  );
-
+  // Keep rows in sync with context job (context polls continuously)
   useEffect(() => {
-    if (jobId) {
-      pollJob(jobId);
-      pollRef.current = setInterval(() => pollJob(jobId), POLL_INTERVAL);
-    }
-    return () => stopPolling();
-  }, [jobId, pollJob, stopPolling]);
+    setRows(buildRowsFromJob(job));
+  }, [job]);
 
   const handleFiles = (e) => {
     const selected = Array.from(e.target.files).filter((f) =>
@@ -451,9 +454,7 @@ function BulkUpload() {
     setError(null);
     try {
       const data = await bulkUploadInvoices(files, invoiceType);
-      localStorage.setItem('bulk_job_id', data.job_id);
-      localStorage.setItem('upload_mode', 'bulk');
-      setJobId(data.job_id);
+      startBulkJob(data.job_id);
     } catch (err) {
       setError(err?.response?.data?.detail || err.message || 'Upload failed');
       setRunning(false);
@@ -464,25 +465,20 @@ function BulkUpload() {
     if (!jobId) return;
     try {
       await cancelBulkJob(jobId);
-      setJob((prev) => (prev ? { ...prev, status: 'cancelled' } : prev));
+      updateBulkJob((prev) => (prev ? { ...prev, status: 'cancelled' } : prev));
       setRows((prev) =>
         prev.map((r) =>
           r.status === 'pending' || r.status === 'processing' ? { ...r, status: 'cancelled' } : r
         )
       );
-      stopPolling();
-      setRunning(false);
+      stopBulkPolling();
     } catch (err) {
       setError(err?.response?.data?.detail || err.message || 'Cancel failed');
     }
   };
 
   const handleReset = () => {
-    stopPolling();
-    localStorage.removeItem('bulk_job_id');
-    localStorage.removeItem('upload_mode');
-    setJobId(null);
-    setJob(null);
+    resetBulkJob();
     setRows([]);
     setFiles([]);
     setRunning(false);
