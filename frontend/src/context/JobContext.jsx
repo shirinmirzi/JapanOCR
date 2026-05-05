@@ -81,7 +81,9 @@ export function JobProvider({ children }) {
       setBulkJob(null);
       return;
     }
-    // Fetch immediately so pages see data on first render
+    // Fetch immediately so pages see data on first render, then clear any
+    // existing interval before creating a new one (handles the case where
+    // bulkJobId changes to a new value while a previous interval is still running).
     pollBulkJob(bulkJobId);
     stopBulkPolling();
     pollRef.current = setInterval(() => pollBulkJob(bulkJobId), POLL_INTERVAL_MS);

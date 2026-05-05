@@ -100,8 +100,8 @@ function SingleUpload() {
   const [liveLog, setLiveLog] = useState(null);
   const inputRef = useRef();
 
-  // Poll the logs endpoint every 3 s while the OCR request is in flight so the
-  // user can see the "processing" log entry appear and update in real time.
+  // Poll the logs endpoint every 3 s while the OCR request is in flight so
+  // the user can see the "processing" log entry appear and update in real time.
   // Also runs when singleUploading is true but `file` is null — this handles
   // the case where the user navigated away and back while the upload was still
   // running (file state is lost on unmount but context flag persists).
