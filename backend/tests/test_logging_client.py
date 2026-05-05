@@ -180,3 +180,50 @@ def test_get_timeout_diagnostics_returns_row_values(monkeypatch) -> None:
     result = logging_client.get_timeout_diagnostics()
     assert result["timeout_count"] == 2
     assert result["success_count"] == 10
+
+
+# =============================================================================
+# mark_stale_logs_interrupted
+# =============================================================================
+
+
+def test_mark_stale_logs_interrupted_issues_update(monkeypatch) -> None:
+    """mark_stale_logs_interrupted must issue exactly one UPDATE statement."""
+    calls = []
+
+    def fake_write(sql, params=None):
+        calls.append(sql)
+
+    monkeypatch.setattr(logging_client, "execute_write", fake_write)
+
+    logging_client.mark_stale_logs_interrupted()
+
+    assert len(calls) == 1
+
+
+def test_mark_stale_logs_interrupted_targets_processing_status(monkeypatch) -> None:
+    """The UPDATE must target rows with status = 'processing'."""
+    captured_sql = []
+
+    def fake_write(sql, params=None):
+        captured_sql.append(sql)
+
+    monkeypatch.setattr(logging_client, "execute_write", fake_write)
+
+    logging_client.mark_stale_logs_interrupted()
+
+    sql_lower = captured_sql[0].lower()
+    assert "processing" in sql_lower
+    assert "interrupted" in sql_lower
+
+
+def test_mark_stale_logs_interrupted_suppresses_db_errors(monkeypatch) -> None:
+    """mark_stale_logs_interrupted must not raise when the DB write fails."""
+    def bad_write(sql, params=None):
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(logging_client, "execute_write", bad_write)
+
+    # Should not raise.
+    logging_client.mark_stale_logs_interrupted()
+

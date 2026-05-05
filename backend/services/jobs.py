@@ -10,6 +10,9 @@ Key Features:
 - Progress tracking: atomic processed_count increment per completed file
 - Paginated listing: filterable by status and user with sort support
 - Partial results: intermediate result snapshots written during processing
+- In-process cancel events: threading.Event registry so the cancel endpoint
+  and startup cleanup signal background threads immediately, without waiting
+  for the thread to reach its next between-file DB status poll.
 
 Dependencies: psycopg2 (via config.database)
 Author: SHIRIN MIRZI M K
@@ -17,11 +20,87 @@ Author: SHIRIN MIRZI M K
 
 import json
 import logging
+import threading
 import uuid
 
 from config.database import execute_query, execute_write
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# In-process cancel event registry
+#
+# Maps job_id → threading.Event.  The background processing thread receives
+# its event at creation time (via register_job_cancel_event) and checks
+# event.is_set() before every file and after every blocking OCR call so that
+# a cancellation or a server-restart interrupt takes effect immediately —
+# without having to wait for the thread to reach its next DB status poll.
+# ---------------------------------------------------------------------------
+
+_cancel_events: dict[str, threading.Event] = {}
+_cancel_events_lock = threading.Lock()
+
+
+def register_job_cancel_event(job_id: str) -> threading.Event:
+    """
+    Create and register a cancel event for job_id; return the event.
+
+    Called in the request handler immediately before scheduling the background
+    task so the event is in the registry before the thread starts running.
+
+    Args:
+        job_id: UUID of the job being started.
+
+    Returns:
+        A new, unset threading.Event bound to this job_id.
+    """
+    event = threading.Event()
+    with _cancel_events_lock:
+        _cancel_events[job_id] = event
+    return event
+
+
+def signal_job_cancelled(job_id: str) -> None:
+    """
+    Set the cancel event for job_id so the background thread stops promptly.
+
+    Safe to call even when job_id is not registered (no-op in that case).
+
+    Args:
+        job_id: UUID of the job to signal.
+    """
+    with _cancel_events_lock:
+        event = _cancel_events.get(job_id)
+    if event:
+        event.set()
+
+
+def signal_all_jobs_cancelled() -> None:
+    """
+    Set the cancel event for every currently registered job.
+
+    Called during application startup so that any background threads still
+    running in the same process (e.g. during a uvicorn hot-reload) are told
+    to stop without waiting for their next DB poll.
+    """
+    with _cancel_events_lock:
+        events = list(_cancel_events.values())
+    for event in events:
+        event.set()
+
+
+def unregister_job_cancel_event(job_id: str) -> None:
+    """
+    Remove the cancel event for job_id from the registry.
+
+    Called by the background thread when it exits (normally or early) to
+    release the event and prevent the registry from growing indefinitely.
+
+    Args:
+        job_id: UUID of the job whose event should be removed.
+    """
+    with _cancel_events_lock:
+        _cancel_events.pop(job_id, None)
 
 
 def create_job(filenames: list, user_id: str = None, batch_name: str = None) -> str:
@@ -210,6 +289,9 @@ def cancel_job(job_id: str) -> bool:
     Atomically transition a job from an active state to 'cancelled'.
 
     Only jobs currently in 'queued' or 'processing' state can be cancelled.
+    When the DB update succeeds the in-process cancel event is also set so
+    the background thread stops at its next check point rather than waiting
+    for the thread to reach its next between-file DB poll.
 
     Args:
         job_id: UUID of the job to cancel.
@@ -223,6 +305,8 @@ def cancel_job(job_id: str) -> bool:
         "UPDATE jobs SET status = 'cancelled' WHERE id = %s AND status IN ('queued', 'processing') RETURNING id",
         (job_id,),
     )
+    if result is not None:
+        signal_job_cancelled(job_id)
     return result is not None
 
 
@@ -232,12 +316,15 @@ def mark_stale_jobs_interrupted() -> None:
 
     Called once during application startup to clean up stale job records
     that were left in an active state by a previous server instance (e.g.
-    after a crash or a hot-reload). Prevents the UI from showing jobs as
-    perpetually running after a server restart.
+    after a crash or a hot-reload). Also signals all in-process cancel events
+    so background threads still running in the same process (hot-reload
+    scenario) stop at their next check point without waiting for a DB poll.
+    Prevents the UI from showing jobs as perpetually running after a restart.
     """
     execute_write(
         "UPDATE jobs SET status = 'interrupted' WHERE status IN ('processing', 'queued')"
     )
+    signal_all_jobs_cancelled()
     logger.info("Marked stale processing/queued jobs as interrupted on startup")
 
 

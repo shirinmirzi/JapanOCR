@@ -11,6 +11,9 @@ Key Features:
 - Module tagging: entries carry a module field so invoice and other
   pipeline logs can be filtered independently
 - Diagnostics: timeout/error/success counts for operational monitoring
+- Startup cleanup: mark_stale_logs_interrupted resets 'processing' entries
+  left behind by a crashed or restarted server so the Logs page does not
+  show perpetually-active entries after a restart
 - Backward compat: log_ocr_result alias preserved for older call sites
 
 Dependencies: psycopg2 (via config.database)
@@ -318,6 +321,24 @@ def get_logs_paged(
         "page_size": page_size,
         "total_pages": max(1, (total + page_size - 1) // page_size),
     }
+
+
+def mark_stale_logs_interrupted() -> None:
+    """
+    Mark all log entries stuck in 'processing' state as 'interrupted'.
+
+    Called once at application startup to clean up log rows that were left
+    in the 'processing' state by a previous server instance (e.g. after a
+    crash or a hot-reload). Prevents the Logs page from polling indefinitely
+    on entries that will never reach a terminal state.
+    """
+    try:
+        execute_write(
+            "UPDATE logs SET status = 'interrupted' WHERE status = 'processing'"
+        )
+        logger.info("Marked stale processing log entries as interrupted on startup")
+    except Exception as e:
+        logger.warning("Could not mark stale log entries as interrupted: %s", e)
 
 
 def get_logs_db(limit: int = 100, user_id: str = None) -> list:
