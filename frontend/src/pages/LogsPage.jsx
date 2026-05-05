@@ -334,7 +334,7 @@ export default function LogsPage() {
           </svg>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 min-w-0 flex-1">
             <span className="text-xs font-semibold text-indigo-800">
-              Processing {activeJob.processed_count}/{activeJob.total_count} files
+              Processing {activeJob.processed_count ?? 0}/{activeJob.total_count ?? '…'} files
             </span>
             {activeJob.current_file && (
               <span className="text-xs font-mono text-indigo-700 truncate max-w-xs">

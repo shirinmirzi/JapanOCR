@@ -14,7 +14,7 @@
  * Dependencies: services/api
  * Author: SHIRIN MIRZI M K
  */
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { getBulkJob } from '../services/api';
 
 const TERMINAL_STATUSES = new Set(['done', 'failed', 'cancelled', 'partial', 'interrupted']);
@@ -109,8 +109,15 @@ export function ActiveJobProvider({ children }) {
   // True whenever a job exists and has not yet reached a terminal state.
   const isActive = !!job && !TERMINAL_STATUSES.has(job.status);
 
+  // Memoize the context value so consumers only re-render when the data
+  // they use actually changes, not on every provider render cycle.
+  const value = useMemo(
+    () => ({ jobId, job, setJob, setJobId, clearJob, isActive }),
+    [jobId, job, setJob, setJobId, clearJob, isActive]
+  );
+
   return (
-    <ActiveJobContext.Provider value={{ jobId, job, setJob, setJobId, clearJob, isActive }}>
+    <ActiveJobContext.Provider value={value}>
       {children}
     </ActiveJobContext.Provider>
   );

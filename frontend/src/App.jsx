@@ -33,8 +33,8 @@ export default function App() {
     <MsalProvider instance={msalInstance}>
       <UserProvider>
         <LangProvider>
-        <ActiveJobProvider>
         <ModuleProvider>
+        <ActiveJobProvider>
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
@@ -55,8 +55,8 @@ export default function App() {
             <Route path="*" element={<Navigate to="/upload" replace />} />
           </Routes>
         </BrowserRouter>
-        </ModuleProvider>
         </ActiveJobProvider>
+        </ModuleProvider>
         </LangProvider>
       </UserProvider>
     </MsalProvider>
