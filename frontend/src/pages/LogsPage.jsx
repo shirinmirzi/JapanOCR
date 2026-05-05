@@ -217,29 +217,22 @@ export default function LogsPage() {
       };
       const result = await getLogsPaged(params);
       // Discard stale responses from superseded requests.
-      // For non-background loads that are superseded, still clear the loading
-      // state so the page never gets stuck showing the loading placeholder.
-      if (myId !== loadIdRef.current) {
-        if (!isBackground) {
-          setLoading(false);
-          setInitialLoadDone(true);
-        }
-        return;
-      }
+      // The finally block still runs and handles releasing the loading state.
+      if (myId !== loadIdRef.current) return;
       setData(result);
       setInitialLoadDone(true);
     } catch (e) {
-      if (myId === loadIdRef.current) {
-        console.error(e);
-        // Mark load as done even on error so the UI doesn't stay blank
-        setInitialLoadDone(true);
-      } else if (!isBackground) {
-        // Stale non-background request failed: still release loading state
+      if (myId === loadIdRef.current) console.error(e);
+    } finally {
+      // Clear loading and mark the initial load complete for:
+      //   (a) the most-recent request (any type), and
+      //   (b) any superseded non-background request — prevents the
+      //       "Loading…" placeholder from getting stuck when a background
+      //       poll fires before the initial load returns (success or error).
+      if (myId === loadIdRef.current || !isBackground) {
         setLoading(false);
         setInitialLoadDone(true);
       }
-    } finally {
-      if (myId === loadIdRef.current) setLoading(false);
     }
   }, [page, q, since, until, module]);
 
