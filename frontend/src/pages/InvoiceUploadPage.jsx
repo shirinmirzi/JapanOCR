@@ -432,6 +432,7 @@ function BulkUpload() {
   const [files, setFiles] = useState([]);
   const [rows, setRows] = useState([]);
   const [running, setRunning] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState(null);
   const [invoiceType, setInvoiceType] = useState('daily');
 
@@ -463,6 +464,7 @@ function BulkUpload() {
 
   const handleCancel = async () => {
     if (!jobId) return;
+    setCancelling(true);
     try {
       await cancelBulkJob(jobId);
       updateBulkJob((prev) => (prev ? { ...prev, status: 'cancelled' } : prev));
@@ -474,6 +476,8 @@ function BulkUpload() {
       stopBulkPolling();
     } catch (err) {
       setError(err?.response?.data?.detail || err.message || 'Cancel failed');
+    } finally {
+      setCancelling(false);
     }
   };
 
@@ -563,9 +567,16 @@ function BulkUpload() {
                   {!TERMINAL_STATUSES.has(job.status) && (
                     <button
                       onClick={handleCancel}
-                      className="px-3 py-1.5 text-xs border border-red-200 text-red-700 rounded-lg hover:bg-red-50 transition-colors"
+                      disabled={cancelling}
+                      className="px-3 py-1.5 text-xs border border-red-200 text-red-700 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
                     >
-                      {t('bulk_cancel')}
+                      {cancelling && (
+                        <svg className="animate-spin w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                        </svg>
+                      )}
+                      {cancelling ? t('cancelling') : t('bulk_cancel')}
                     </button>
                   )}
                   <button

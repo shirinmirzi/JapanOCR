@@ -15,7 +15,7 @@
  * Author: SHIRIN MIRZI M K
  */
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { getLogsPaged } from '../services/api';
+import { getLogsPaged, cancelBulkJob } from '../services/api';
 import { useModule } from '../context/ModuleContext';
 import { t } from '../i18n';
 import { useLang } from '../context/LangContext';
@@ -54,6 +54,9 @@ const isComplete = (s) => !!s && ['success', 'processed', 'completed', 'done'].i
 const isFailed = (s) => !!s && ['error', 'failed', 'not_found', 'timeout'].includes(s);
 const isProcessing = (s) => !!s && ['processing', 'queued', 'pending'].includes(s);
 const isIncomplete = (s) => !!s && ['incomplete', 'partial', 'cancelled'].includes(s);
+
+// Job statuses that can still be cancelled (not yet in a terminal state)
+const CANCELLABLE_STATUSES = new Set(['processing', 'queued']);
 
 // A "processing" log entry is considered actively running only if it was
 // created within the last 10 minutes. Entries older than that are likely
@@ -161,8 +164,11 @@ export default function LogsPage() {
   useLang();
 
   // Active-job state comes from the shared context (persists across navigation)
-  const { isBulkJobActive, singleUploading } = useJob();
+  const { isBulkJobActive, singleUploading, bulkJobId, bulkJob, updateBulkJob, stopBulkPolling } = useJob();
   const hasActiveJob = isBulkJobActive || singleUploading;
+
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState(null);
 
   const [data, setData] = useState({ items: [], total: 0, total_pages: 1 });
   const [page, setPage] = useState(1);
@@ -174,6 +180,21 @@ export default function LogsPage() {
   const [loading, setLoading] = useState(false);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [expanded, setExpanded] = useState(new Set());
+
+  const handleCancelJob = useCallback(async () => {
+    if (!bulkJobId) return;
+    setCancelling(true);
+    setCancelError(null);
+    try {
+      await cancelBulkJob(bulkJobId);
+      updateBulkJob((prev) => (prev ? { ...prev, status: 'cancelled' } : prev));
+      stopBulkPolling();
+    } catch (err) {
+      setCancelError(err?.response?.data?.detail || err.message || 'Cancel failed');
+    } finally {
+      setCancelling(false);
+    }
+  }, [bulkJobId, updateBulkJob, stopBulkPolling]);
 
   // Reset page and clear stale data when the selected module changes so that
   // the previous module's records are never visible under the new module.
@@ -371,11 +392,32 @@ export default function LogsPage() {
       {hasActiveJob && (
         <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 mb-4 flex items-center gap-3">
           <span className="animate-spin inline-block w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full flex-shrink-0" aria-hidden="true" />
-          <span className="text-sm font-medium text-indigo-800">
+          <span className="text-sm font-medium text-indigo-800 flex-1">
             {isBulkJobActive
               ? 'Bulk job processing in progress — logs update automatically every few seconds.'
               : 'Invoice processing in progress — logs update automatically every few seconds.'}
           </span>
+          {isBulkJobActive && bulkJob && CANCELLABLE_STATUSES.has(bulkJob.status) && (
+            <button
+              onClick={handleCancelJob}
+              disabled={cancelling}
+              className="ml-auto flex-shrink-0 flex items-center gap-1 px-3 py-1.5 text-xs border border-red-200 text-red-700 bg-white rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {cancelling && (
+                <svg className="animate-spin w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                </svg>
+              )}
+              {cancelling ? t('cancelling') : t('cancel')}
+            </button>
+          )}
+        </div>
+      )}
+      {cancelError && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-start gap-2">
+          <span className="text-red-400 mt-0.5">⚠</span>
+          {cancelError}
         </div>
       )}
 
