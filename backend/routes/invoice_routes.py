@@ -251,9 +251,7 @@ def _group_monthly_pages(
         page_filename = f"{stem}_page{page_num}{ext}"
         invoice_data, ocr_error = _ocr_monthly_page(page_content, page_filename)
         if ocr_error:
-            logger.error(
-                "OCR failed for %s%s page %d: %s", stem, ext, page_num, ocr_error
-            )
+            logger.error("OCR failed for %s: %s", page_filename, ocr_error)
         invoice_number = invoice_data.get("invoice_number", "N/A")
         valid_invoice_no = bool(
             not ocr_error and re.fullmatch(r"\d{10}", invoice_number)
@@ -357,8 +355,13 @@ def _process_monthly_page(
     )
 
     # Use pre-computed OCR data when provided (avoids a second DocWise call).
-    if _precomputed_invoice_data is not None or _precomputed_ocr_error is not None:
-        page_invoice_data: dict = _precomputed_invoice_data or {}
+    # _precomputed_invoice_data is always a dict (possibly empty) when the
+    # grouping step supplies it, making it the explicit sentinel for "OCR was
+    # already done by the caller". _precomputed_ocr_error can legitimately be
+    # None even when pre-computed data exists (meaning OCR succeeded without
+    # error), so it cannot be used as the sentinel.
+    if _precomputed_invoice_data is not None:
+        page_invoice_data: dict = _precomputed_invoice_data
         page_ocr_error: str | None = _precomputed_ocr_error
     else:
         page_invoice_data, page_ocr_error = _ocr_monthly_page(
@@ -371,7 +374,7 @@ def _process_monthly_page(
 
     page_output_folder = "ProcessedFiles"
     page_renamed = None
-    _validation_error_msg: str | None = None
+    validation_error_msg: str | None = None
     if not page_ocr_error:
         customer_code = page_invoice_data.get("customer_code", "N/A")
         coll_invoice_no = page_invoice_data.get("invoice_number", "N/A")
@@ -394,7 +397,7 @@ def _process_monthly_page(
                 effective_code, coll_invoice_no, invoice_date
             )
         else:
-            _validation_error_msg = (
+            validation_error_msg = (
                 f"Extracted fields failed validation for page {page_num}: "
                 f"customer_code={customer_code!r} (valid={_safe_customer_code}), "
                 f"coll_invoice_no={coll_invoice_no!r} (valid={_valid_coll_invoice}), "
@@ -403,7 +406,7 @@ def _process_monthly_page(
             logger.warning(
                 "Monthly page validation failed for %s: %s",
                 original_filename,
-                _validation_error_msg,
+                validation_error_msg,
             )
 
     # Pages that could not be renamed (OCR error or invalid fields) go to
@@ -454,7 +457,7 @@ def _process_monthly_page(
             error=(
                 page_ocr_error
                 if page_ocr_error
-                else _validation_error_msg
+                else validation_error_msg
             ),
             folder_name=page_output_folder,
         )
