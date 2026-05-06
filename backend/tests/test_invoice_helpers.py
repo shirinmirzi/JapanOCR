@@ -16,7 +16,9 @@ from routes.invoice_routes import (
     _build_monthly_renamed_filename,
     _build_renamed_filename,
     _build_upload_folder,
+    _group_monthly_pages,
     _lookup_master,
+    _merge_pdf_pages,
     _split_pdf_pages,
 )
 
@@ -384,4 +386,220 @@ def test_split_pdf_pages_invalid_input_raises() -> None:
 
     with pytest.raises(Exception):
         _split_pdf_pages(b"not a pdf")
+
+
+# =============================================================================
+# _merge_pdf_pages
+# =============================================================================
+
+
+def test_merge_pdf_pages_two_single_page_pdfs() -> None:
+    """Merging two single-page PDFs must yield a two-page PDF."""
+    import io
+
+    from pypdf import PdfReader
+
+    pdf1 = _make_minimal_pdf(1)
+    pdf2 = _make_minimal_pdf(1)
+    merged = _merge_pdf_pages([pdf1, pdf2])
+    reader = PdfReader(io.BytesIO(merged))
+    assert len(reader.pages) == 2
+
+
+def test_merge_pdf_pages_single_page_returns_single_page() -> None:
+    """Merging a list with one PDF must return a one-page PDF."""
+    import io
+
+    from pypdf import PdfReader
+
+    pdf = _make_minimal_pdf(1)
+    merged = _merge_pdf_pages([pdf])
+    reader = PdfReader(io.BytesIO(merged))
+    assert len(reader.pages) == 1
+
+
+def test_merge_pdf_pages_three_pages() -> None:
+    """Merging three single-page PDFs must yield a three-page PDF."""
+    import io
+
+    from pypdf import PdfReader
+
+    pages = [_make_minimal_pdf(1) for _ in range(3)]
+    merged = _merge_pdf_pages(pages)
+    reader = PdfReader(io.BytesIO(merged))
+    assert len(reader.pages) == 3
+
+
+def test_merge_pdf_pages_result_is_bytes() -> None:
+    merged = _merge_pdf_pages([_make_minimal_pdf(1)])
+    assert isinstance(merged, bytes)
+    assert len(merged) > 0
+
+
+# =============================================================================
+# _group_monthly_pages
+# =============================================================================
+
+
+def _make_ocr_result(invoice_number: str = "1234567890") -> dict:
+    """Return a minimal extract_invoice_data-style dict for testing."""
+    return {
+        "customer_code": "12345",
+        "invoice_number": invoice_number,
+        "invoice_date": "2025/05/01",
+    }
+
+
+@patch("routes.invoice_routes._ocr_monthly_page")
+def test_group_monthly_pages_single_page_no_grouping(mock_ocr) -> None:
+    """A single page forms its own group unchanged."""
+    mock_ocr.return_value = (_make_ocr_result("1234567890"), None)
+    pages = [_make_minimal_pdf(1)]
+    groups = _group_monthly_pages(pages, "test", ".pdf")
+    assert groups is not None
+    assert len(groups) == 1
+    assert groups[0]["page_nums"] == [1]
+    assert groups[0]["merged_filename"] == "test_page1.pdf"
+    assert groups[0]["ocr_error"] is None
+
+
+@patch("routes.invoice_routes._ocr_monthly_page")
+def test_group_monthly_pages_two_pages_same_invoice_merged(mock_ocr) -> None:
+    """Two consecutive pages with the same Coll Invoice No. become one group."""
+    mock_ocr.return_value = (_make_ocr_result("8030066978"), None)
+    pages = [_make_minimal_pdf(1), _make_minimal_pdf(1)]
+    groups = _group_monthly_pages(pages, "通常", ".pdf")
+    assert groups is not None
+    assert len(groups) == 1
+    assert groups[0]["page_nums"] == [1, 2]
+    assert groups[0]["merged_filename"] == "通常_page1-2.pdf"
+
+
+@patch("routes.invoice_routes._ocr_monthly_page")
+def test_group_monthly_pages_two_pages_different_invoices_separate(mock_ocr) -> None:
+    """Two pages with different invoice numbers produce two separate groups."""
+    mock_ocr.side_effect = [
+        (_make_ocr_result("1111111111"), None),
+        (_make_ocr_result("2222222222"), None),
+    ]
+    pages = [_make_minimal_pdf(1), _make_minimal_pdf(1)]
+    groups = _group_monthly_pages(pages, "test", ".pdf")
+    assert groups is not None
+    assert len(groups) == 2
+    assert groups[0]["page_nums"] == [1]
+    assert groups[1]["page_nums"] == [2]
+
+
+@patch("routes.invoice_routes._ocr_monthly_page")
+def test_group_monthly_pages_three_pages_two_plus_one(mock_ocr) -> None:
+    """Pages 1+2 share an invoice; page 3 has a different one → two groups."""
+    mock_ocr.side_effect = [
+        (_make_ocr_result("1111111111"), None),
+        (_make_ocr_result("1111111111"), None),
+        (_make_ocr_result("2222222222"), None),
+    ]
+    pages = [_make_minimal_pdf(1) for _ in range(3)]
+    groups = _group_monthly_pages(pages, "test", ".pdf")
+    assert groups is not None
+    assert len(groups) == 2
+    assert groups[0]["page_nums"] == [1, 2]
+    assert groups[1]["page_nums"] == [3]
+
+
+@patch("routes.invoice_routes._ocr_monthly_page")
+def test_group_monthly_pages_ocr_error_makes_standalone_group(mock_ocr) -> None:
+    """A page whose OCR fails is treated as a standalone single-page group."""
+    mock_ocr.side_effect = [
+        ({}, "DocWise timeout"),
+        (_make_ocr_result("1234567890"), None),
+    ]
+    pages = [_make_minimal_pdf(1), _make_minimal_pdf(1)]
+    groups = _group_monthly_pages(pages, "test", ".pdf")
+    assert groups is not None
+    assert len(groups) == 2
+    assert groups[0]["page_nums"] == [1]
+    assert groups[0]["ocr_error"] == "DocWise timeout"
+    assert groups[1]["page_nums"] == [2]
+    assert groups[1]["ocr_error"] is None
+
+
+@patch("routes.invoice_routes._ocr_monthly_page")
+def test_group_monthly_pages_invalid_invoice_number_standalone(mock_ocr) -> None:
+    """A page with a non-10-digit invoice number is not grouped."""
+    mock_ocr.side_effect = [
+        (_make_ocr_result("N/A"), None),       # invalid — not 10 digits
+        (_make_ocr_result("1234567890"), None),  # valid
+    ]
+    pages = [_make_minimal_pdf(1), _make_minimal_pdf(1)]
+    groups = _group_monthly_pages(pages, "test", ".pdf")
+    assert groups is not None
+    assert len(groups) == 2
+    assert groups[0]["page_nums"] == [1]
+    assert groups[1]["page_nums"] == [2]
+
+
+@patch("routes.invoice_routes._ocr_monthly_page")
+def test_group_monthly_pages_group_error_when_second_page_fails(mock_ocr) -> None:
+    """If the second page of a group fails OCR the whole group carries the error."""
+    mock_ocr.side_effect = [
+        (_make_ocr_result("1234567890"), None),
+        ({}, "timeout on page 2"),
+    ]
+    pages = [_make_minimal_pdf(1), _make_minimal_pdf(1)]
+    # Page 2 has an OCR error so it cannot be grouped — it's standalone.
+    # Page 1 has a valid invoice_number and is also standalone.
+    groups = _group_monthly_pages(pages, "test", ".pdf")
+    assert groups is not None
+    # Page 2 fails OCR → grouping_key is None → standalone group
+    assert len(groups) == 2
+    assert groups[0]["page_nums"] == [1]
+    assert groups[0]["ocr_error"] is None
+    assert groups[1]["page_nums"] == [2]
+    assert groups[1]["ocr_error"] == "timeout on page 2"
+
+
+@patch("routes.invoice_routes._ocr_monthly_page")
+def test_group_monthly_pages_cancelled_returns_none(mock_ocr) -> None:
+    """When cancel_event is set before OCR the function returns None."""
+    import threading
+
+    mock_ocr.return_value = (_make_ocr_result(), None)
+    cancel_event = threading.Event()
+    cancel_event.set()
+    pages = [_make_minimal_pdf(1)]
+    result = _group_monthly_pages(pages, "test", ".pdf", cancel_event)
+    assert result is None
+    mock_ocr.assert_not_called()
+
+
+@patch("routes.invoice_routes._ocr_monthly_page")
+def test_group_monthly_pages_merged_content_is_multi_page_pdf(mock_ocr) -> None:
+    """The merged content for a two-page group must be a valid two-page PDF."""
+    import io
+
+    from pypdf import PdfReader
+
+    mock_ocr.return_value = (_make_ocr_result("9876543210"), None)
+    pages = [_make_minimal_pdf(1), _make_minimal_pdf(1)]
+    groups = _group_monthly_pages(pages, "test", ".pdf")
+    assert groups is not None
+    assert len(groups) == 1
+    merged = groups[0]["merged_content"]
+    reader = PdfReader(io.BytesIO(merged))
+    assert len(reader.pages) == 2
+
+
+@patch("routes.invoice_routes._ocr_monthly_page")
+def test_group_monthly_pages_invoice_data_from_first_page(mock_ocr) -> None:
+    """The group's invoice_data must come from the first page in the group."""
+    first_data = _make_ocr_result("1234567890")
+    first_data["customer_code"] = "11111"
+    second_data = _make_ocr_result("1234567890")
+    second_data["customer_code"] = "22222"
+    mock_ocr.side_effect = [(first_data, None), (second_data, None)]
+    pages = [_make_minimal_pdf(1), _make_minimal_pdf(1)]
+    groups = _group_monthly_pages(pages, "test", ".pdf")
+    assert groups is not None
+    assert len(groups) == 1
+    assert groups[0]["invoice_data"]["customer_code"] == "11111"
 
