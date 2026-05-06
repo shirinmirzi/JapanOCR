@@ -148,39 +148,22 @@ def _split_pdf_pages(content: bytes) -> list[bytes]:
     return pages
 
 
-def _process_monthly_page(
-    page_content: bytes,
-    page_filename: str,
-    page_num: int,
-    original_filename: str,
-    user_id: str,
-    job_id: str | None,
-    execution_folder: str,
-) -> dict:
-    """OCR, route, rename, upload, and record a single monthly invoice page.
+def _ocr_monthly_page(page_content: bytes, page_filename: str) -> tuple[dict, str | None]:
+    """Run OCR on a single monthly invoice page and return the extracted data.
+
+    This is a pure OCR helper — it does not upload files, create log entries,
+    or write invoice records.  Use ``_process_monthly_page`` for the full
+    pipeline.
 
     Args:
         page_content: Raw bytes of the single-page PDF.
-        page_filename: Derived filename used for storage and OCR (e.g.
-            ``invoice_page1.pdf``).
-        page_num: 1-based page index, embedded in the result dict.
-        original_filename: Name of the original multi-page PDF, used only
-            for log messages.
-        user_id: Username of the uploading user.
-        job_id: Optional parent job UUID.
-        execution_folder: Shared execution folder for the batch.
+        page_filename: Filename used when calling DocWise (affects OCR prompt).
 
     Returns:
-        Dict with extracted invoice fields, ``renamed_filename``,
-        ``output_folder``, ``blob_url``, ``blob_path``, ``page_number``,
-        and optionally ``error``.
+        ``(invoice_data, error_string_or_None)`` — on OCR success
+        ``invoice_data`` is the dict from ``extract_invoice_data``; on failure
+        it is ``{}`` and the error message is returned as the second element.
     """
-    page_log_id = log_processing_start(
-        page_filename,
-        user_id=user_id,
-        execution_folder=execution_folder,
-        module="invoice",
-    )
     page_invoice_data: dict = {}
     page_ocr_error = None
     try:
@@ -199,11 +182,196 @@ def _process_monthly_page(
             with contextlib.suppress(Exception):
                 os.unlink(page_tmp_path)
     except Exception as e:
-        logger.error("OCR failed for %s page %d: %s", original_filename, page_num, e)
         page_ocr_error = str(e)
+    return page_invoice_data, page_ocr_error
+
+
+def _merge_pdf_pages(pages_content: list[bytes]) -> bytes:
+    """Merge multiple single-page PDFs into one multi-page PDF.
+
+    Args:
+        pages_content: List of single-page PDF byte strings to merge.
+
+    Returns:
+        Bytes of the merged multi-page PDF.
+    """
+    writer = PdfWriter()
+    for page_bytes in pages_content:
+        reader = PdfReader(io.BytesIO(page_bytes))
+        for page in reader.pages:
+            writer.add_page(page)
+    buf = io.BytesIO()
+    writer.write(buf)
+    return buf.getvalue()
+
+
+def _group_monthly_pages(
+    pages_content: list[bytes],
+    stem: str,
+    ext: str,
+    cancel_event: threading.Event | None = None,
+) -> list[dict] | None:
+    """OCR each physical page and group consecutive pages by Coll Invoice No.
+
+    Pages sharing the same valid 10-digit Coll Invoice No. are merged into one
+    logical invoice (one output PDF).  Pages whose invoice number cannot be
+    extracted — because OCR failed or the value is not a 10-digit number — are
+    left as standalone single-page groups (same behaviour as before grouping).
+
+    Cancellation is checked before each OCR call when *cancel_event* is
+    supplied; ``None`` is returned immediately so the caller can perform its
+    normal cancellation teardown.
+
+    Args:
+        pages_content: List of single-page PDF byte strings (from
+            ``_split_pdf_pages``).
+        stem: Filename stem of the original PDF (without extension).
+        ext: File extension including the leading dot (e.g. ``.pdf``).
+        cancel_event: Optional ``threading.Event``; when set the function
+            returns ``None`` instead of a partial result.
+
+    Returns:
+        List of group dicts, each containing:
+
+        - ``merged_content`` – bytes of the (possibly merged) PDF.
+        - ``merged_filename`` – derived filename for storage.
+        - ``page_nums`` – list of 1-based physical page numbers in this group.
+        - ``invoice_data`` – OCR data dict from the first page in the group.
+        - ``ocr_error`` – first OCR error string, or ``None`` when all pages
+          succeeded.
+
+        Returns ``None`` if *cancel_event* was set during processing.
+    """
+    # Phase 1: OCR each page individually.
+    page_data: list[dict] = []
+    for page_idx, page_content in enumerate(pages_content):
+        if cancel_event is not None and cancel_event.is_set():
+            return None
+        page_num = page_idx + 1
+        page_filename = f"{stem}_page{page_num}{ext}"
+        invoice_data, ocr_error = _ocr_monthly_page(page_content, page_filename)
+        if ocr_error:
+            logger.error(
+                "OCR failed for %s%s page %d: %s", stem, ext, page_num, ocr_error
+            )
+        invoice_number = invoice_data.get("invoice_number", "N/A")
+        valid_invoice_no = bool(
+            not ocr_error and re.fullmatch(r"\d{10}", invoice_number)
+        )
+        page_data.append({
+            "page_num": page_num,
+            "page_filename": page_filename,
+            "page_content": page_content,
+            "invoice_data": invoice_data,
+            "ocr_error": ocr_error,
+            "grouping_key": invoice_number if valid_invoice_no else None,
+        })
+
+    # Phase 2: Group consecutive pages that share the same Coll Invoice No.
+    raw_groups: list[list[dict]] = []
+    i = 0
+    while i < len(page_data):
+        page = page_data[i]
+        grouping_key = page["grouping_key"]
+        if grouping_key is None:
+            raw_groups.append([page])
+            i += 1
+        else:
+            group: list[dict] = [page]
+            j = i + 1
+            while (
+                j < len(page_data)
+                and page_data[j]["grouping_key"] == grouping_key
+            ):
+                group.append(page_data[j])
+                j += 1
+            raw_groups.append(group)
+            i = j
+
+    # Phase 3: Merge PDFs within each group and assemble result dicts.
+    result: list[dict] = []
+    for group in raw_groups:
+        page_nums = [p["page_num"] for p in group]
+        merged_content = _merge_pdf_pages([p["page_content"] for p in group])
+        if len(page_nums) == 1:
+            merged_filename = group[0]["page_filename"]
+        else:
+            merged_filename = f"{stem}_page{page_nums[0]}-{page_nums[-1]}{ext}"
+        first_error = next((p["ocr_error"] for p in group if p["ocr_error"]), None)
+        result.append({
+            "merged_content": merged_content,
+            "merged_filename": merged_filename,
+            "page_nums": page_nums,
+            "invoice_data": group[0]["invoice_data"],
+            "ocr_error": first_error,
+        })
+
+    return result
+
+
+def _process_monthly_page(
+    page_content: bytes,
+    page_filename: str,
+    page_num: int,
+    original_filename: str,
+    user_id: str,
+    job_id: str | None,
+    execution_folder: str,
+    *,
+    _precomputed_invoice_data: dict | None = None,
+    _precomputed_ocr_error: str | None = None,
+) -> dict:
+    """Route, rename, upload, and record a monthly invoice (page or group).
+
+    When *_precomputed_invoice_data* / *_precomputed_ocr_error* are supplied
+    the OCR step is skipped and the caller-provided data is used directly.
+    This allows ``_group_monthly_pages`` to perform a single OCR pass for
+    grouping and reuse the results here without a second round-trip to DocWise.
+
+    Args:
+        page_content: Raw bytes of the PDF to store (may be a merged
+            multi-page PDF when called after grouping).
+        page_filename: Derived filename used for storage and log messages.
+        page_num: 1-based index of the first physical page in this logical
+            invoice, embedded in the result dict.
+        original_filename: Name of the original multi-page PDF, used only
+            for log messages.
+        user_id: Username of the uploading user.
+        job_id: Optional parent job UUID.
+        execution_folder: Shared execution folder for the batch.
+        _precomputed_invoice_data: Pre-OCR'd invoice data dict; skips the
+            OCR step when provided.
+        _precomputed_ocr_error: Pre-computed OCR error string; skips the
+            OCR step when provided.
+
+    Returns:
+        Dict with extracted invoice fields, ``renamed_filename``,
+        ``output_folder``, ``blob_url``, ``blob_path``, ``page_number``,
+        and optionally ``error``.
+    """
+    page_log_id = log_processing_start(
+        page_filename,
+        user_id=user_id,
+        execution_folder=execution_folder,
+        module="invoice",
+    )
+
+    # Use pre-computed OCR data when provided (avoids a second DocWise call).
+    if _precomputed_invoice_data is not None or _precomputed_ocr_error is not None:
+        page_invoice_data: dict = _precomputed_invoice_data or {}
+        page_ocr_error: str | None = _precomputed_ocr_error
+    else:
+        page_invoice_data, page_ocr_error = _ocr_monthly_page(
+            page_content, page_filename
+        )
+        if page_ocr_error:
+            logger.error(
+                "OCR failed for %s page %d: %s", original_filename, page_num, page_ocr_error
+            )
 
     page_output_folder = "ProcessedFiles"
     page_renamed = None
+    _validation_error_msg: str | None = None
     if not page_ocr_error:
         customer_code = page_invoice_data.get("customer_code", "N/A")
         coll_invoice_no = page_invoice_data.get("invoice_number", "N/A")
@@ -224,6 +392,18 @@ def _process_monthly_page(
                 page_output_folder = _DO_NOT_SEND_FOLDER
             page_renamed = _build_monthly_renamed_filename(
                 effective_code, coll_invoice_no, invoice_date
+            )
+        else:
+            _validation_error_msg = (
+                f"Extracted fields failed validation for page {page_num}: "
+                f"customer_code={customer_code!r} (valid={_safe_customer_code}), "
+                f"coll_invoice_no={coll_invoice_no!r} (valid={_valid_coll_invoice}), "
+                f"invoice_date={invoice_date!r}"
+            )
+            logger.warning(
+                "Monthly page validation failed for %s: %s",
+                original_filename,
+                _validation_error_msg,
             )
 
     # Pages that could not be renamed (OCR error or invalid fields) go to
@@ -274,7 +454,7 @@ def _process_monthly_page(
             error=(
                 page_ocr_error
                 if page_ocr_error
-                else f"Extracted fields failed validation for page {page_num}"
+                else _validation_error_msg
             ),
             folder_name=page_output_folder,
         )
@@ -428,12 +608,20 @@ def _process_single_file_sync(
                     "all_pages": [],
                 }
 
-            for page_idx, page_content in enumerate(pages_content):
-                page_num = page_idx + 1
-                page_filename = f"{stem}_page{page_num}{ext}"
+            # Group consecutive pages that share the same Coll Invoice No.
+            # into logical invoices; each group is stored as one merged PDF.
+            groups = _group_monthly_pages(pages_content, stem, ext)
+            for group in groups:
                 page_result = _process_monthly_page(
-                    page_content, page_filename, page_num,
-                    filename, user_id, job_id, execution_folder,
+                    group["merged_content"],
+                    group["merged_filename"],
+                    group["page_nums"][0],
+                    filename,
+                    user_id,
+                    job_id,
+                    execution_folder,
+                    _precomputed_invoice_data=group["invoice_data"],
+                    _precomputed_ocr_error=group["ocr_error"],
                 )
                 page_results.append(page_result)
 
@@ -691,23 +879,44 @@ def _background_bulk_process(job_id: str, files_data: list, user_id: str, invoic
                 increment_processed(job_id)
                 continue
 
-            for page_idx, page_content in enumerate(pages_content):
-                # Check for cancellation before each blocking OCR page call.
+            # Group consecutive pages that share the same Coll Invoice No.
+            # (OCR is performed inside _group_monthly_pages; cancellation is
+            # checked before each page's OCR call).
+            groups = _group_monthly_pages(pages_content, stem, ext, cancel_event)
+            if groups is None:
+                # Cancelled during the grouping/OCR phase.
+                logger.info(
+                    "Job %s: cancelled during grouping of %s",
+                    job_id, filename,
+                )
+                update_log_entry(log_id, "interrupted", error="Job cancelled")
+                set_current_file(job_id, None)
+                set_job_results(job_id, results)
+                unregister_job_cancel_event(job_id)
+                return
+
+            for group in groups:
+                # Check for cancellation before each upload/record step.
                 if cancel_event is not None and cancel_event.is_set():
                     logger.info(
-                        "Job %s: cancelled before page %d of %s",
-                        job_id, page_idx + 1, filename,
+                        "Job %s: cancelled before processing group pages %s of %s",
+                        job_id, group["page_nums"], filename,
                     )
                     update_log_entry(log_id, "interrupted", error="Job cancelled")
                     set_current_file(job_id, None)
                     set_job_results(job_id, results)
                     unregister_job_cancel_event(job_id)
                     return
-                page_num = page_idx + 1
-                page_filename = f"{stem}_page{page_num}{ext}"
                 page_result = _process_monthly_page(
-                    page_content, page_filename, page_num,
-                    filename, user_id, job_id, execution_folder,
+                    group["merged_content"],
+                    group["merged_filename"],
+                    group["page_nums"][0],
+                    filename,
+                    user_id,
+                    job_id,
+                    execution_folder,
+                    _precomputed_invoice_data=group["invoice_data"],
+                    _precomputed_ocr_error=group["ocr_error"],
                 )
                 page_results.append(page_result)
 
