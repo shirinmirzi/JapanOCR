@@ -222,7 +222,10 @@ export default function LogsPage() {
       setData(result);
       setInitialLoadDone(true);
     } catch (e) {
-      if (myId === loadIdRef.current) console.error(e);
+      if (myId === loadIdRef.current) {
+        console.error(e);
+        setInitialLoadDone(true);
+      }
     } finally {
       // Clear loading and mark the initial load complete for:
       //   (a) the most-recent request (any type), and
@@ -402,7 +405,7 @@ export default function LogsPage() {
       {/* Grouped expandable list */}
       <div className="space-y-2">
         {/* Show a subtle loading placeholder only on the very first fetch */}
-        {!initialLoadDone && loading && (
+        {!initialLoadDone && (
           <div className="bg-white rounded-xl border border-gray-200 px-6 py-8 text-center text-gray-400 flex items-center justify-center gap-2">
             <span className="animate-spin inline-block w-4 h-4 border-2 border-gray-300 border-t-gray-500 rounded-full" />
             {t('logs_loading')}

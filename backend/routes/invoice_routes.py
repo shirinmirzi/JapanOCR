@@ -29,7 +29,6 @@ from datetime import datetime, timezone
 
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     File,
     Form,
@@ -907,7 +906,6 @@ async def upload_invoice(
 
 @router.post("/bulk-upload")
 async def bulk_upload_invoices(
-    background_tasks: BackgroundTasks,
     files: list[UploadFile] = File(...),
     invoice_type: str = Form("daily"),
     user_date: str = Form(None),  # Accepted for backward compatibility but no longer used
@@ -921,7 +919,6 @@ async def bulk_upload_invoices(
     returned job_id.
 
     Args:
-        background_tasks: FastAPI BackgroundTasks injected by the framework.
         files: One or more PDF files to process.
         invoice_type: "daily" or "monthly"; defaults to "daily".
         user_date: Ignored — accepted only for backward compatibility.
@@ -950,15 +947,19 @@ async def bulk_upload_invoices(
         files_data.append({"filename": f.filename, "content": content})
 
     cancel_event = register_job_cancel_event(job_id)
-    background_tasks.add_task(
-        _background_bulk_process,
-        job_id,
-        files_data,
-        user["username"],
-        invoice_type,
-        execution_folder,
-        cancel_event,
+    t = threading.Thread(
+        target=_background_bulk_process,
+        args=(job_id, files_data, user["username"], invoice_type, execution_folder, cancel_event),
+        daemon=True,
+        name=f"bulk-process-{job_id}",
     )
+    try:
+        t.start()
+    except RuntimeError as exc:
+        unregister_job_cancel_event(job_id)
+        set_job_status(job_id, "failed")
+        logger.error("Failed to start bulk-process thread for job %s: %s", job_id, exc)
+        raise HTTPException(status_code=500, detail="Failed to start background processing") from exc
 
     return {"job_id": job_id, "accepted": len(files), "filenames": filenames, "execution_folder": execution_folder}
 
