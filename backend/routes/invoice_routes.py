@@ -16,7 +16,9 @@ Dependencies: FastAPI, psycopg2, azure-storage-blob, services.*
 Author: SHIRIN MIRZI M K
 """
 
+import asyncio
 import contextlib
+import functools
 import io
 import logging
 import os
@@ -337,8 +339,9 @@ def _lookup_master(customer_code: str, invoice_type: str) -> tuple[str, bool]:
     return destination_cd, False
 
 
-async def _process_single_file(
-    file: UploadFile,
+def _process_single_file_sync(
+    content: bytes,
+    filename: str,
     user_id: str,
     job_id: str = None,
     invoice_type: str = "daily",
@@ -357,7 +360,8 @@ async def _process_single_file(
     ``ProcessedFiles`` (or ``DoNotSend`` when the master lookup indicates it).
 
     Args:
-        file: The uploaded PDF UploadFile object.
+        content: Raw bytes of the uploaded PDF.
+        filename: Original filename of the uploaded PDF.
         user_id: Username of the uploading user.
         job_id: Optional parent job UUID for bulk-upload context.
         invoice_type: "daily" or "monthly" — selects the OCR prompt and
@@ -375,8 +379,6 @@ async def _process_single_file(
         Exception: Re-raises unexpected errors after updating the log entry
             to 'error' so the log always reaches a terminal state.
     """
-    content = await file.read()
-    filename = file.filename
 
     if execution_folder is None:
         execution_folder = _build_execution_folder()
@@ -889,8 +891,16 @@ async def upload_invoice(
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
     if invoice_type not in _VALID_INVOICE_TYPES:
         raise HTTPException(status_code=400, detail="invoice_type must be 'daily' or 'monthly'")
-    result = await _process_single_file(
-        file, user["username"], invoice_type=invoice_type
+    content = await file.read()
+    result = await asyncio.get_running_loop().run_in_executor(
+        None,
+        functools.partial(
+            _process_single_file_sync,
+            content,
+            file.filename,
+            user["username"],
+            invoice_type=invoice_type,
+        ),
     )
     return result
 
