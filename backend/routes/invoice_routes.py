@@ -964,7 +964,7 @@ async def bulk_upload_invoices(
 
 
 @router.get("/paged")
-async def get_invoices_paged_route(
+def get_invoices_paged_route(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     q: str = Query(None),
@@ -998,7 +998,7 @@ async def get_invoices_paged_route(
 
 
 @router.get("/job/{job_id}")
-async def get_invoices_for_job(
+def get_invoices_for_job(
     job_id: str,
     user: dict = Depends(get_current_user),
 ):
@@ -1016,7 +1016,7 @@ async def get_invoices_for_job(
 
 
 @router.get("/{invoice_id}/download")
-async def get_invoice_download_url(
+def get_invoice_download_url(
     invoice_id: int,
     user: dict = Depends(get_current_user),
 ):
@@ -1048,7 +1048,7 @@ async def get_invoice_download_url(
 
 
 @router.get("/{invoice_id}")
-async def get_invoice(
+def get_invoice(
     invoice_id: int,
     user: dict = Depends(get_current_user),
 ):
@@ -1072,7 +1072,7 @@ async def get_invoice(
 
 
 @router.delete("/{invoice_id}")
-async def delete_invoice(
+def delete_invoice(
     invoice_id: int,
     user: dict = Depends(get_current_user),
 ):

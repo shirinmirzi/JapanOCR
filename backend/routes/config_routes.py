@@ -203,7 +203,7 @@ async def upload_master_data(
 
 
 @router.get("/master-data/{master_type}")
-async def get_master_data(
+def get_master_data(
     master_type: str,
     user: dict = Depends(get_current_user),
 ):
