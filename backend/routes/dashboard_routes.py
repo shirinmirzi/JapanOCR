@@ -28,7 +28,7 @@ router = APIRouter(prefix="/api/dashboard")
 
 
 @router.get("/summary")
-async def get_dashboard_summary(
+def get_dashboard_summary(
     jobs_limit: int = Query(5, ge=1, le=50),
     invoices_limit: int = Query(5, ge=1, le=50),
     failures_limit: int = Query(5, ge=1, le=50),

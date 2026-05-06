@@ -24,7 +24,7 @@ router = APIRouter(prefix="/logs")
 
 
 @router.get("/db/paged")
-async def logs_paged(
+def logs_paged(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     status: str = Query(None),
@@ -66,7 +66,7 @@ async def logs_paged(
 
 
 @router.get("/diagnostics/timeouts")
-async def timeout_diagnostics(
+def timeout_diagnostics(
     user: dict = Depends(get_current_user),
 ):
     """

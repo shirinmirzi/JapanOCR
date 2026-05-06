@@ -24,7 +24,7 @@ router = APIRouter(prefix="/jobs")
 
 
 @router.get("/paged")
-async def jobs_paged(
+def jobs_paged(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     sort_by: str = Query("created_at"),
@@ -50,7 +50,7 @@ async def jobs_paged(
 
 
 @router.get("/{job_id}")
-async def get_job_by_id(
+def get_job_by_id(
     job_id: str,
     user: dict = Depends(get_current_user),
 ):
@@ -74,7 +74,7 @@ async def get_job_by_id(
 
 
 @router.post("/{job_id}/cancel")
-async def cancel_job_by_id(
+def cancel_job_by_id(
     job_id: str,
     user: dict = Depends(get_current_user),
 ):
